@@ -6,5 +6,10 @@ export default defineConfig({
   dts: true,
   clean: true,
   sourcemap: true,
-  external: ["@qontinui/ui-bridge", "ts-morph", "@ts-morph/common"],
+  external: [
+    "@qontinui/ui-bridge",
+    "ts-morph",
+    "@ts-morph/common",
+    "@anthropic-ai/sdk",
+  ],
 });

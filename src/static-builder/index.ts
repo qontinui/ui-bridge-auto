@@ -6,7 +6,7 @@
  */
 
 // Pipeline
-export { buildStateMachine } from "./pipeline";
+export { buildStateMachine, buildStateMachineAsync } from "./pipeline";
 export type { BuildResult, UncertainItem, PipelineContext } from "./pipeline";
 
 // Config
@@ -86,3 +86,18 @@ export {
   emitPersistedStateMachine,
   emitPersistedStateMachineJSON,
 } from "./output/persisted-emitter";
+
+// Enhancement
+export type {
+  AIConfig,
+  AIEnhancementResult,
+  DynamicNavigationResult,
+  InferredElementsResult,
+  ImprovedLabelResult,
+} from "./enhancement/ai-types";
+export type { AIClient, AIEnhancementOptions } from "./enhancement/ai-analyzer";
+export {
+  enhanceWithAI,
+  enhanceWithClient,
+  createMockClient,
+} from "./enhancement/ai-analyzer";

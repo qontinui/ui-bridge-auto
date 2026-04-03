@@ -417,6 +417,7 @@ export {
 // Static state machine builder
 export {
   buildStateMachine,
+  buildStateMachineAsync,
   type BuildResult,
   type UncertainItem,
   type PipelineContext,
@@ -469,4 +470,14 @@ export {
   emitWorkflowConfigJSON,
   emitPersistedStateMachine,
   emitPersistedStateMachineJSON,
+  type AIConfig,
+  type AIEnhancementResult,
+  type DynamicNavigationResult,
+  type InferredElementsResult,
+  type ImprovedLabelResult,
+  type AIClient,
+  type AIEnhancementOptions,
+  enhanceWithAI,
+  enhanceWithClient,
+  createMockClient,
 } from "./static-builder";

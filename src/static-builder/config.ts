@@ -68,10 +68,16 @@ export interface BuilderConfig {
    */
   maxComponentDepth?: number;
 
-  /** AI enhancement configuration (optional). */
+  /** AI enhancement configuration (optional, disabled by default). */
   ai?: {
+    /** Enable AI enhancement for uncertain items. */
     enabled: boolean;
+    /** Model ID (e.g., "claude-sonnet-4-5-20250514"). */
     model: string;
+    /** API key. Falls back to ANTHROPIC_API_KEY env var. */
+    apiKey?: string;
+    /** Maximum tokens per AI response (default 1024). */
+    maxTokens?: number;
   };
 
   /** Output configuration. */

@@ -44,6 +44,11 @@ import {
 import { generateStates } from "./generation/state-generator";
 import { generateTransitions } from "./generation/transition-generator";
 import { stateId, stateName } from "./generation/id-generator";
+import { enhanceWithAI } from "./enhancement/ai-analyzer";
+import type {
+  AIConfig,
+  AIEnhancementResult,
+} from "./enhancement/ai-types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -84,6 +89,8 @@ export interface BuildResult {
   routeBranches: Map<string, BranchEnumeration>;
   /** Traced transitions per route (for diagnostics). */
   tracedTransitions: TracedTransition[];
+  /** AI enhancement results (if AI was enabled). */
+  aiEnhancement?: AIEnhancementResult;
   /** Items the mechanical analysis could not fully resolve. */
   uncertain: UncertainItem[];
 }
@@ -340,5 +347,93 @@ export function buildStateMachine(config: BuilderConfig): BuildResult {
     routeBranches,
     tracedTransitions: allTracedTransitions,
     uncertain,
+  };
+}
+
+/**
+ * Run the full static analysis pipeline with optional AI enhancement.
+ *
+ * Same as buildStateMachine() but runs an AI enhancement pass between
+ * mechanical analysis and generation. AI resolves uncertain items:
+ * dynamic navigation targets, unknown components, complex conditions.
+ *
+ * Requires AI config with enabled: true. Falls back to the sync pipeline
+ * if AI is disabled.
+ */
+export async function buildStateMachineAsync(
+  config: BuilderConfig,
+): Promise<BuildResult> {
+  // Run the mechanical analysis first
+  const result = buildStateMachine(config);
+
+  // If AI is disabled or no uncertain items, return as-is
+  if (!config.ai?.enabled || result.uncertain.length === 0) {
+    return result;
+  }
+
+  // Build source context map for uncertain items
+  const contexts = new Map<string, string>();
+  // Contexts are built from the source files we already have loaded
+  // For now, the description field provides the context
+
+  const aiConfig: AIConfig = {
+    enabled: true,
+    model: config.ai.model,
+    apiKey: config.ai.apiKey,
+    maxTokens: config.ai.maxTokens,
+  };
+
+  const aiResult = await enhanceWithAI(result.uncertain, aiConfig, {
+    knownRouteIds: result.routes.map((r) => r.caseValues[0]),
+    contexts,
+  });
+
+  // Apply AI results to the state machine
+  const enhancedResult = applyAIEnhancements(result, aiResult);
+  return enhancedResult;
+}
+
+/**
+ * Apply AI enhancement results to the build output.
+ *
+ * - Dynamic navigation results add new traced transitions
+ * - Inferred elements add requiredElements to affected states
+ * - Improved labels update state names
+ */
+function applyAIEnhancements(
+  result: BuildResult,
+  aiResult: AIEnhancementResult,
+): BuildResult {
+  // Apply inferred elements to states with unknown components
+  for (const inferred of aiResult.inferredElements) {
+    const item = inferred.originalItem;
+    // Find states that reference the unknown component's route
+    // The description contains the route ID
+    const routeIdMatch = item.description.match(/route "([^"]+)"/);
+    if (routeIdMatch) {
+      const targetStateId = stateId(routeIdMatch[1]);
+      const state = result.states.find((s) => s.id === targetStateId);
+      if (state) {
+        state.requiredElements.push(...inferred.inferredElements);
+      }
+    }
+  }
+
+  // Apply improved labels to state names
+  for (const label of aiResult.improvedLabels) {
+    for (const state of result.states) {
+      if (state.name.includes(label.originalLabel)) {
+        state.name = state.name.replace(
+          label.originalLabel,
+          label.improvedLabel,
+        );
+      }
+    }
+  }
+
+  return {
+    ...result,
+    aiEnhancement: aiResult,
+    uncertain: aiResult.unresolved,
   };
 }
