@@ -501,6 +501,19 @@ export class AutomationEngine {
           await this.waitForElement(wait.query, timeout);
         }
         break;
+      case "vanish":
+        if (wait.query) {
+          const vanishDeadline = Date.now() + timeout;
+          while (Date.now() < vanishDeadline) {
+            const el = this.executor.findElement(wait.query);
+            if (!el) return;
+            await new Promise<void>((resolve) => setTimeout(resolve, 50));
+          }
+          throw new Error(
+            `Timed out waiting for element to vanish after ${timeout}ms`,
+          );
+        }
+        break;
     }
   }
 }

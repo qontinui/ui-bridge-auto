@@ -136,5 +136,18 @@ async function handleWaitAfter(
         `Timed out waiting for element after ${timeout}ms`,
       );
     }
+
+    case "vanish": {
+      if (!wait.query) break;
+      const vanishDeadline = Date.now() + timeout;
+      while (Date.now() < vanishDeadline) {
+        const el = executor.findElement(wait.query);
+        if (!el) return;
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
+      throw new Error(
+        `Timed out waiting for element to vanish after ${timeout}ms`,
+      );
+    }
   }
 }

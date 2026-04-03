@@ -26,7 +26,7 @@ export interface ActionStep {
 }
 
 export interface WaitSpec {
-  type: "idle" | "element" | "state" | "time" | "condition";
+  type: "idle" | "element" | "state" | "time" | "condition" | "vanish";
   query?: ElementQuery;
   stateId?: string;
   ms?: number;
@@ -104,6 +104,17 @@ async function executeWait(
       // serialisable WaitSpec. Fall back to idle wait.
       await executor.waitForIdle(timeout);
       break;
+    }
+
+    case "vanish": {
+      if (!spec.query) break;
+      const deadline = Date.now() + timeout;
+      while (Date.now() < deadline) {
+        const found = findFirst(registry.getAllElements(), spec.query);
+        if (!found) return;
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
+      throw new Error(`Wait for element to vanish timed out after ${timeout}ms`);
     }
   }
 }

@@ -58,6 +58,9 @@ export type {
   ActionRecord,
   ActionStatus,
   ActionExecutionOptions,
+  PressTiming,
+  RepetitionOptions,
+  VerificationSpec,
 } from "./types/action";
 export {
   createActionRecord,
@@ -120,6 +123,9 @@ export type {
   SelectConfig,
   WaitConfig,
   ScrollIntoViewConfig,
+  ScrollConfig,
+  MousePressConfig,
+  KeyPressConfig,
   ActionDefaults,
 } from "./config/action-config";
 export {
@@ -128,6 +134,9 @@ export {
   mergeTypeConfig,
   mergeSelectConfig,
   mergeWaitConfig,
+  mergeScrollConfig,
+  mergeMousePressConfig,
+  mergeKeyPressConfig,
   mergeActionDefaults,
 } from "./config/action-config";
 
@@ -317,6 +326,7 @@ export {
   type ChainOptions,
   type ChainResult,
   type ChainExecutor,
+  type ClickUntilCondition,
   createChainContext,
   ActionChain,
   ChainBuilder,
@@ -325,6 +335,7 @@ export {
   tryCatch,
   switchCase,
   repeatUntilElement,
+  clickUntil,
   type RetryOptions,
   type DelayOptions,
   createDefaultRetryOptions,
