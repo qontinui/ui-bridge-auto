@@ -1,0 +1,36 @@
+{
+  "name": "@qontinui/ui-bridge-auto",
+  "version": "0.1.0",
+  "description": "DOM-based model-based automation library for the UI Bridge SDK",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\""
+  },
+  "dependencies": {
+    "@qontinui/ui-bridge": "file:../ui-bridge/packages/ui-bridge"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^4.1.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "UNLICENSED"
+}

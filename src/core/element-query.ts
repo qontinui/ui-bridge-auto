@@ -1,0 +1,377 @@
+/**
+ * Structural element query language for DOM-based automation.
+ *
+ * Unlike CSS selectors, these queries use semantic DOM properties that the
+ * UI Bridge registry already extracts. Queries are resolved against the
+ * in-memory registry — no DOM traversal needed.
+ */
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface ElementQuery {
+  // Identity
+  id?: string | RegExp;
+  role?: string;
+  tagName?: string;
+
+  // Content matching
+  text?: string;
+  textContains?: string;
+  textPattern?: RegExp;
+
+  // Accessibility
+  ariaLabel?: string;
+  ariaSelected?: boolean;
+  ariaExpanded?: boolean;
+  ariaPressed?: boolean | "mixed";
+
+  // Data & HTML attributes
+  attributes?: Record<string, string | RegExp | boolean>;
+
+  // Element state
+  visible?: boolean;
+  enabled?: boolean;
+  checked?: boolean;
+  focused?: boolean;
+
+  // Spatial (viewport coordinates)
+  within?: { x: number; y: number; width: number; height: number };
+
+  // Structural (DOM tree — queries resolved recursively)
+  parent?: ElementQuery;
+  ancestor?: ElementQuery;
+  hasChild?: ElementQuery;
+
+  // Computed styles
+  style?: Record<string, string | RegExp>;
+
+  // Logical combinators
+  and?: ElementQuery[];
+  or?: ElementQuery[];
+  not?: ElementQuery;
+}
+
+export interface QueryResult {
+  id: string;
+  label: string | undefined;
+  type: string;
+  matchReasons: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Registry element shape (minimal interface to avoid hard dependency)
+// ---------------------------------------------------------------------------
+
+export interface QueryableElement {
+  id: string;
+  element: HTMLElement;
+  type: string;
+  label?: string;
+  getState: () => QueryableElementState;
+  getIdentifier?: () => { selector?: string; xpath?: string; htmlId?: string };
+}
+
+export interface QueryableElementState {
+  visible?: boolean;
+  enabled?: boolean;
+  focused?: boolean;
+  checked?: boolean;
+  textContent?: string;
+  value?: string | number | boolean;
+  rect?: { x: number; y: number; width: number; height: number };
+  computedStyles?: Record<string, string>;
+}
+
+// ---------------------------------------------------------------------------
+// Query engine
+// ---------------------------------------------------------------------------
+
+export function matchesQuery(
+  el: QueryableElement,
+  query: ElementQuery,
+): { matches: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  const state = el.getState();
+
+  // --- Identity ---
+  if (query.id !== undefined) {
+    if (typeof query.id === "string") {
+      if (el.id !== query.id) return { matches: false, reasons };
+    } else {
+      if (!query.id.test(el.id)) return { matches: false, reasons };
+    }
+    reasons.push(`id=${el.id}`);
+  }
+
+  if (query.role !== undefined) {
+    const elRole =
+      el.element.getAttribute("role") || inferRole(el.element.tagName, el.type);
+    if (elRole !== query.role) return { matches: false, reasons };
+    reasons.push(`role=${elRole}`);
+  }
+
+  if (query.tagName !== undefined) {
+    if (el.element.tagName.toLowerCase() !== query.tagName.toLowerCase())
+      return { matches: false, reasons };
+    reasons.push(`tag=${query.tagName}`);
+  }
+
+  // --- Content ---
+  const text = state.textContent ?? el.element.textContent ?? "";
+
+  if (query.text !== undefined) {
+    if (text.trim() !== query.text.trim()) return { matches: false, reasons };
+    reasons.push(`text="${query.text}"`);
+  }
+
+  if (query.textContains !== undefined) {
+    if (!text.toLowerCase().includes(query.textContains.toLowerCase()))
+      return { matches: false, reasons };
+    reasons.push(`textContains="${query.textContains}"`);
+  }
+
+  if (query.textPattern !== undefined) {
+    if (!query.textPattern.test(text)) return { matches: false, reasons };
+    reasons.push(`textPattern=${query.textPattern}`);
+  }
+
+  // --- Accessibility ---
+  if (query.ariaLabel !== undefined) {
+    const ariaLabel = el.element.getAttribute("aria-label") ?? el.label ?? "";
+    if (!ariaLabel.toLowerCase().includes(query.ariaLabel.toLowerCase()))
+      return { matches: false, reasons };
+    reasons.push(`ariaLabel="${ariaLabel}"`);
+  }
+
+  if (query.ariaSelected !== undefined) {
+    const val = el.element.getAttribute("aria-selected") === "true";
+    if (val !== query.ariaSelected) return { matches: false, reasons };
+    reasons.push(`ariaSelected=${val}`);
+  }
+
+  if (query.ariaExpanded !== undefined) {
+    const val = el.element.getAttribute("aria-expanded") === "true";
+    if (val !== query.ariaExpanded) return { matches: false, reasons };
+    reasons.push(`ariaExpanded=${val}`);
+  }
+
+  if (query.ariaPressed !== undefined) {
+    const raw = el.element.getAttribute("aria-pressed");
+    const val = raw === "mixed" ? "mixed" : raw === "true";
+    if (val !== query.ariaPressed) return { matches: false, reasons };
+    reasons.push(`ariaPressed=${val}`);
+  }
+
+  // --- Attributes ---
+  if (query.attributes) {
+    for (const [name, expected] of Object.entries(query.attributes)) {
+      const actual = el.element.getAttribute(name);
+      if (typeof expected === "boolean") {
+        if (expected && actual === null) return { matches: false, reasons };
+        if (!expected && actual !== null) return { matches: false, reasons };
+      } else if (typeof expected === "string") {
+        if (actual !== expected) return { matches: false, reasons };
+      } else {
+        if (actual === null || !expected.test(actual))
+          return { matches: false, reasons };
+      }
+      reasons.push(`attr[${name}]`);
+    }
+  }
+
+  // --- State ---
+  if (query.visible !== undefined) {
+    if (state.visible !== query.visible) return { matches: false, reasons };
+    reasons.push(`visible=${state.visible}`);
+  }
+
+  if (query.enabled !== undefined) {
+    if (state.enabled !== query.enabled) return { matches: false, reasons };
+    reasons.push(`enabled=${state.enabled}`);
+  }
+
+  if (query.checked !== undefined) {
+    if (state.checked !== query.checked) return { matches: false, reasons };
+    reasons.push(`checked=${state.checked}`);
+  }
+
+  if (query.focused !== undefined) {
+    if (state.focused !== query.focused) return { matches: false, reasons };
+    reasons.push(`focused=${state.focused}`);
+  }
+
+  // --- Spatial ---
+  if (query.within && state.rect) {
+    const r = state.rect;
+    const w = query.within;
+    if (r.x < w.x || r.y < w.y || r.x + r.width > w.x + w.width || r.y + r.height > w.y + w.height)
+      return { matches: false, reasons };
+    reasons.push("within-bounds");
+  }
+
+  // --- Computed styles ---
+  if (query.style && state.computedStyles) {
+    for (const [prop, expected] of Object.entries(query.style)) {
+      const actual = state.computedStyles[prop];
+      if (actual === undefined) return { matches: false, reasons };
+      if (typeof expected === "string") {
+        if (actual !== expected) return { matches: false, reasons };
+      } else {
+        if (!expected.test(actual)) return { matches: false, reasons };
+      }
+      reasons.push(`style.${prop}`);
+    }
+  }
+
+  // --- Structural ---
+  if (query.parent) {
+    const parentEl = el.element.parentElement;
+    if (!parentEl) return { matches: false, reasons };
+    const parentMatch = matchesQueryOnRawElement(parentEl, query.parent);
+    if (!parentMatch) return { matches: false, reasons };
+    reasons.push("parent-match");
+  }
+
+  if (query.ancestor) {
+    let current = el.element.parentElement;
+    let found = false;
+    while (current) {
+      if (matchesQueryOnRawElement(current, query.ancestor)) {
+        found = true;
+        break;
+      }
+      current = current.parentElement;
+    }
+    if (!found) return { matches: false, reasons };
+    reasons.push("ancestor-match");
+  }
+
+  if (query.hasChild) {
+    const children = Array.from(el.element.children) as HTMLElement[];
+    const hasMatch = children.some((child) =>
+      matchesQueryOnRawElement(child, query.hasChild!),
+    );
+    if (!hasMatch) return { matches: false, reasons };
+    reasons.push("has-child-match");
+  }
+
+  // --- Logical combinators ---
+  if (query.not) {
+    const negResult = matchesQuery(el, query.not);
+    if (negResult.matches) return { matches: false, reasons };
+    reasons.push("not-excluded");
+  }
+
+  if (query.and) {
+    for (const sub of query.and) {
+      const subResult = matchesQuery(el, sub);
+      if (!subResult.matches) return { matches: false, reasons };
+    }
+    reasons.push("and-all-matched");
+  }
+
+  if (query.or) {
+    const anyMatch = query.or.some((sub) => matchesQuery(el, sub).matches);
+    if (!anyMatch) return { matches: false, reasons };
+    reasons.push("or-one-matched");
+  }
+
+  return { matches: true, reasons };
+}
+
+/**
+ * Execute a query against a collection of registered elements.
+ */
+export function executeQuery(
+  elements: QueryableElement[],
+  query: ElementQuery,
+): QueryResult[] {
+  const results: QueryResult[] = [];
+  for (const el of elements) {
+    const { matches, reasons } = matchesQuery(el, query);
+    if (matches) {
+      results.push({
+        id: el.id,
+        label: el.label,
+        type: el.type,
+        matchReasons: reasons,
+      });
+    }
+  }
+  return results;
+}
+
+/**
+ * Find the first element matching the query.
+ */
+export function findFirst(
+  elements: QueryableElement[],
+  query: ElementQuery,
+): QueryResult | null {
+  for (const el of elements) {
+    const { matches, reasons } = matchesQuery(el, query);
+    if (matches) {
+      return { id: el.id, label: el.label, type: el.type, matchReasons: reasons };
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function inferRole(tagName: string, type: string): string {
+  const tag = tagName.toLowerCase();
+  if (tag === "button" || type === "button") return "button";
+  if (tag === "a") return "link";
+  if (tag === "input") return "textbox";
+  if (tag === "select") return "combobox";
+  if (tag === "textarea") return "textbox";
+  if (tag === "img") return "img";
+  if (/^h[1-6]$/.test(tag)) return "heading";
+  if (tag === "nav") return "navigation";
+  if (tag === "main") return "main";
+  return type || tag;
+}
+
+function matchesQueryOnRawElement(
+  el: HTMLElement,
+  query: ElementQuery,
+): boolean {
+  if (query.tagName && el.tagName.toLowerCase() !== query.tagName.toLowerCase())
+    return false;
+  if (query.role) {
+    const role = el.getAttribute("role") || inferRole(el.tagName, "");
+    if (role !== query.role) return false;
+  }
+  if (query.text) {
+    const text = el.textContent?.trim() ?? "";
+    if (text !== query.text.trim()) return false;
+  }
+  if (query.textContains) {
+    const text = el.textContent?.toLowerCase() ?? "";
+    if (!text.includes(query.textContains.toLowerCase())) return false;
+  }
+  if (query.ariaLabel) {
+    const label = el.getAttribute("aria-label") ?? "";
+    if (!label.toLowerCase().includes(query.ariaLabel.toLowerCase()))
+      return false;
+  }
+  if (query.attributes) {
+    for (const [name, expected] of Object.entries(query.attributes)) {
+      const actual = el.getAttribute(name);
+      if (typeof expected === "boolean") {
+        if (expected && actual === null) return false;
+        if (!expected && actual !== null) return false;
+      } else if (typeof expected === "string") {
+        if (actual !== expected) return false;
+      } else {
+        if (actual === null || !expected.test(actual)) return false;
+      }
+    }
+  }
+  return true;
+}
