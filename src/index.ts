@@ -148,7 +148,7 @@ export {
   executeQuery,
   findFirst,
 } from "./core/element-query";
-export { AutomationEngine } from "./core/engine";
+export { AutomationEngine, type EngineConfig } from "./core/engine";
 
 // Core — fuzzy matching
 export {
@@ -350,7 +350,7 @@ export {
 } from "./execution";
 
 // Server
-export { createAutoHandlers } from "./server/endpoints";
+export { createAutoHandlers, type AutoHandlersConfig } from "./server/endpoints";
 
 // Recording & replay
 export {

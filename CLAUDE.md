@@ -61,13 +61,13 @@ This library is being built systematically in work units (WU):
 | WU | Module | Status |
 |----|--------|--------|
 | WU-1 | Foundation (types, config, tests) | Complete |
-| WU-2 | Element Query Engine (deep implementation) | Pending |
-| WU-3 | Action System (chains, control flow, retry) | Pending |
-| WU-4 | State Machine (full detection, discovery, pathfinding) | Pending |
-| WU-5 | Execution Engine (graph-based workflows) | Pending |
-| WU-6 | Recording & Replay | Pending |
-| WU-7 | Error Recovery & Self-Healing | Pending |
-| WU-8 | Server, MCP, Runner Integration | Pending |
+| WU-2 | Element Query Engine (deep implementation) | Complete |
+| WU-3 | Action System (chains, control flow, retry) | Complete |
+| WU-4 | State Machine (full detection, discovery, pathfinding) | Complete |
+| WU-5 | Execution Engine (graph-based workflows) | Complete |
+| WU-6 | Recording & Replay | Complete |
+| WU-7 | Error Recovery & Self-Healing | Complete |
+| WU-8 | Server, MCP, Runner Integration | Complete |
 
 ## Code Standards
 
