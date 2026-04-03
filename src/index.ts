@@ -215,6 +215,56 @@ export {
   TransitionError,
 } from "./state/transition-executor";
 
+// State — co-occurrence analysis
+export {
+  CoOccurrenceMatrix,
+  type CoOccurrenceData,
+} from "./state/co-occurrence";
+
+// State — automatic discovery
+export {
+  StateDiscovery,
+  type DiscoveryConfig,
+  type DiscoveredState,
+  type DiscoveredTransition,
+} from "./state/state-discovery";
+
+// State — graph export/import
+export {
+  exportGraph,
+  importGraph,
+  toMermaid,
+  toDot,
+  type GraphFormat,
+  type StateGraphData,
+} from "./state/state-graph";
+
+// State — reliability tracking
+export {
+  ReliabilityTracker,
+  type ReliabilityRecord,
+} from "./state/reliability";
+
+// State — enhanced navigation
+export {
+  bfsSearch,
+  astarSearch,
+  navigateToAny,
+  navigate,
+  type SearchStrategy,
+  type NavigationOptions,
+  type NavigationResult,
+} from "./state/navigation";
+
+// State — persistence
+export {
+  serialize,
+  deserialize,
+  mergeStateMachines,
+  validate,
+  type PersistedStateMachine,
+} from "./state/persistence";
+
 // Wait
 export { TimeoutError, type WaitOptions } from "./wait/types";
 export { waitForElement } from "./wait/wait-for-element";
