@@ -207,7 +207,18 @@ export {
   type TransitionAction,
 } from "./state/state-machine";
 export { StateDetector, type RegistryLike } from "./state/state-detector";
-export { findPath, NoPathError } from "./state/pathfinder";
+export {
+  findPath,
+  NoPathError,
+  PathNode,
+  applyTransition as applyStateTransition,
+  getAvailableTransitions,
+  reconstructPath,
+  bfs,
+  dijkstra,
+  astar,
+  type Path,
+} from "./state/pathfinder";
 export {
   executeTransition,
   navigateToState,
@@ -250,6 +261,7 @@ export {
   bfsSearch,
   astarSearch,
   navigateToAny,
+  navigateToAll,
   navigate,
   type SearchStrategy,
   type NavigationOptions,

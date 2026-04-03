@@ -15,8 +15,19 @@ export {
 // State detection
 export { StateDetector, type RegistryLike } from "./state-detector";
 
-// Pathfinding (original Dijkstra)
-export { findPath, NoPathError } from "./pathfinder";
+// Pathfinding (multi-target, aligned with multistate)
+export {
+  findPath,
+  NoPathError,
+  PathNode,
+  applyTransition,
+  getAvailableTransitions,
+  reconstructPath,
+  bfs,
+  dijkstra,
+  astar,
+  type Path,
+} from "./pathfinder";
 
 // Transition execution
 export {
@@ -56,11 +67,12 @@ export {
   type ReliabilityRecord,
 } from "./reliability";
 
-// Enhanced navigation
+// Enhanced navigation (multi-target support)
 export {
   bfsSearch,
   astarSearch,
   navigateToAny,
+  navigateToAll,
   navigate,
   type SearchStrategy,
   type NavigationOptions,

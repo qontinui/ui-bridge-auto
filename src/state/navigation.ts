@@ -1,13 +1,22 @@
 /**
  * Enhanced navigation with multiple search strategies.
  *
- * Provides BFS (unweighted), Dijkstra (weighted), and A* (heuristic-guided)
- * pathfinding over the state/transition graph. Supports reliability-adjusted
- * costs, state avoidance/preference, multi-target navigation, and timeouts.
+ * Provides BFS, Dijkstra, and A* pathfinding over the state/transition graph.
+ * Supports reliability-adjusted costs, state avoidance/preference,
+ * single-target, multi-target (any), and multi-target (all) navigation.
+ *
+ * Aligned with the multistate Python library's multi-target pathfinding.
  */
 
 import type { TransitionDefinition } from "./state-machine";
 import type { ReliabilityTracker } from "./reliability";
+import {
+  type Path,
+  PathNode,
+  bfs as coreBfs,
+  dijkstra as coreDijkstra,
+  astar as coreAstar,
+} from "./pathfinder";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,6 +45,10 @@ export interface NavigationOptions {
 export interface NavigationResult {
   /** Ordered sequence of transitions to execute. */
   path: TransitionDefinition[];
+  /** State configuration at each step (including initial). */
+  statesSequence: Set<string>[];
+  /** Which target states were reached. */
+  targetsReached: Set<string>;
   /** Total weighted cost of the path. */
   totalCost: number;
   /** Strategy that was used. */
@@ -47,15 +60,151 @@ export interface NavigationResult {
 }
 
 // ---------------------------------------------------------------------------
-// Internal types
+// Cost function builder
 // ---------------------------------------------------------------------------
 
-/** A node in the search graph (represents a set of active states). */
-interface SearchNode {
-  states: Set<string>;
-  cost: number;
-  path: TransitionDefinition[];
-  depth: number;
+/**
+ * Build a cost function that accounts for reliability adjustments and
+ * state preference bonuses.
+ */
+function buildCostFn(
+  opts: NavigationOptions,
+): (t: TransitionDefinition) => number {
+  return (tr: TransitionDefinition) => {
+    let cost = tr.pathCost ?? 1.0;
+
+    // Reliability adjustment
+    if (opts.reliability) {
+      cost = opts.reliability.adjustedCost(tr.id, cost);
+    }
+
+    // Prefer certain target states (reduce cost by 50%)
+    if (opts.preferStates && opts.preferStates.length > 0) {
+      const prefersTarget = tr.activateStates.some((s) =>
+        opts.preferStates!.includes(s),
+      );
+      if (prefersTarget) {
+        cost *= 0.5;
+      }
+    }
+
+    return cost;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Path result conversion
+// ---------------------------------------------------------------------------
+
+/** Convert a core Path to a NavigationResult. */
+function pathToResult(
+  path: Path | null,
+  strategy: SearchStrategy,
+  startTime: number,
+  statesVisited: number,
+): NavigationResult {
+  if (path === null) {
+    return {
+      path: [],
+      statesSequence: [],
+      targetsReached: new Set(),
+      totalCost: Infinity,
+      strategy,
+      searchTimeMs: Date.now() - startTime,
+      statesVisited,
+    };
+  }
+
+  return {
+    path: path.transitionsSequence,
+    statesSequence: path.statesSequence,
+    targetsReached: new Set(
+      [...path.targets].filter((t) => {
+        // Check if target appears in any state along the path
+        for (const states of path.statesSequence) {
+          if (states.has(t)) return true;
+        }
+        return false;
+      }),
+    ),
+    totalCost: path.totalCost,
+    strategy,
+    searchTimeMs: Date.now() - startTime,
+    statesVisited,
+  };
+}
+
+/** Build an empty (already-at-target) result. */
+function emptyResult(
+  strategy: SearchStrategy,
+  startTime: number,
+  activeStates: Set<string>,
+  targets: Set<string>,
+): NavigationResult {
+  return {
+    path: [],
+    statesSequence: [new Set(activeStates)],
+    targetsReached: new Set([...targets].filter((t) => activeStates.has(t))),
+    totalCost: 0,
+    strategy,
+    searchTimeMs: Date.now() - startTime,
+    statesVisited: 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Internal dispatch
+// ---------------------------------------------------------------------------
+
+/**
+ * Run the appropriate algorithm on targets.
+ */
+function runSearch(
+  activeStates: Set<string>,
+  targetStates: Set<string>,
+  transitions: TransitionDefinition[],
+  options: NavigationOptions,
+): { path: Path | null; statesVisited: number } {
+  const strategy = options.strategy ?? "dijkstra";
+  const avoidStates = options.avoidStates;
+  const maxDepth = options.maxDepth;
+  const getCost = buildCostFn(options);
+
+  // We don't have direct access to visited count from core algorithms,
+  // so we wrap with a counting proxy by intercepting transitions.
+  // For simplicity, we estimate via the path depth.
+  let path: Path | null = null;
+
+  switch (strategy) {
+    case "bfs":
+      path = coreBfs(activeStates, targetStates, transitions, {
+        avoidStates,
+        maxDepth,
+      });
+      break;
+
+    case "astar":
+      path = coreAstar(activeStates, targetStates, transitions, {
+        avoidStates,
+        maxDepth,
+        getCost,
+        // Default heuristic: remaining targets not yet reached
+      });
+      break;
+
+    case "dijkstra":
+    default:
+      path = coreDijkstra(activeStates, targetStates, transitions, {
+        avoidStates,
+        maxDepth,
+        getCost,
+      });
+      break;
+  }
+
+  // Approximate statesVisited from path length (exact count not exposed from core)
+  const statesVisited = path ? path.transitionsSequence.length + 1 : 0;
+  return { path, statesVisited };
 }
 
 // ---------------------------------------------------------------------------
@@ -63,9 +212,37 @@ interface SearchNode {
 // ---------------------------------------------------------------------------
 
 /**
+ * Navigate from the active state set to a single target state using the
+ * specified strategy.
+ */
+export function navigate(
+  activeStates: Set<string>,
+  target: string,
+  transitions: TransitionDefinition[],
+  options?: NavigationOptions,
+): NavigationResult {
+  const startTime = Date.now();
+  const strategy = options?.strategy ?? "dijkstra";
+  const targetSet = new Set([target]);
+
+  // Already there
+  if (activeStates.has(target)) {
+    return emptyResult(strategy, startTime, activeStates, targetSet);
+  }
+
+  const { path, statesVisited } = runSearch(
+    activeStates,
+    targetSet,
+    transitions,
+    options ?? {},
+  );
+
+  return pathToResult(path, strategy, startTime, statesVisited);
+}
+
+/**
  * Find a path using BFS (unweighted shortest path).
- *
- * Ignores transition costs — finds the path with the fewest transitions.
+ * Ignores transition costs -- finds the path with the fewest transitions.
  */
 export function bfsSearch(
   activeStates: Set<string>,
@@ -73,59 +250,10 @@ export function bfsSearch(
   transitions: TransitionDefinition[],
   options?: NavigationOptions,
 ): NavigationResult {
-  const startTime = Date.now();
-  const opts = normalizeOptions(options);
-
-  if (activeStates.has(target)) {
-    return emptyResult("bfs", startTime);
-  }
-
-  const visited = new Set<string>();
-  const queue: SearchNode[] = [
-    { states: new Set(activeStates), cost: 0, path: [], depth: 0 },
-  ];
-  let statesVisited = 0;
-
-  while (queue.length > 0) {
-    if (isTimedOut(startTime, opts.timeout)) break;
-
-    const current = queue.shift()!;
-    const key = stateSetKey(current.states);
-
-    if (visited.has(key)) continue;
-    visited.add(key);
-    statesVisited++;
-
-    for (const tr of transitions) {
-      if (!canApply(tr, current.states, opts)) continue;
-      if (opts.maxDepth !== undefined && current.depth + 1 > opts.maxDepth) continue;
-
-      const next = applyTransition(tr, current.states);
-      const nextKey = stateSetKey(next);
-      if (visited.has(nextKey)) continue;
-
-      const newPath = [...current.path, tr];
-
-      if (next.has(target)) {
-        return {
-          path: newPath,
-          totalCost: newPath.length, // BFS: cost = number of transitions
-          strategy: "bfs",
-          searchTimeMs: Date.now() - startTime,
-          statesVisited,
-        };
-      }
-
-      queue.push({
-        states: next,
-        cost: current.cost + 1,
-        path: newPath,
-        depth: current.depth + 1,
-      });
-    }
-  }
-
-  return noPathResult("bfs", startTime, statesVisited);
+  return navigate(activeStates, target, transitions, {
+    ...options,
+    strategy: "bfs",
+  });
 }
 
 /**
@@ -142,79 +270,37 @@ export function astarSearch(
   options?: NavigationOptions,
 ): NavigationResult {
   const startTime = Date.now();
-  const opts = normalizeOptions(options);
+  const targetSet = new Set([target]);
 
   if (activeStates.has(target)) {
-    return emptyResult("astar", startTime);
+    return emptyResult("astar", startTime, activeStates, targetSet);
   }
 
-  const visited = new Set<string>();
-  // Priority queue sorted by f = g + h
-  const openList: Array<SearchNode & { f: number }> = [
-    {
-      states: new Set(activeStates),
-      cost: 0,
-      path: [],
-      depth: 0,
-      f: heuristic(activeStates, target),
-    },
-  ];
-  let statesVisited = 0;
+  const getCost = buildCostFn(options ?? {});
 
-  while (openList.length > 0) {
-    if (isTimedOut(startTime, opts.timeout)) break;
+  // Wrap the user's single-target heuristic into the multi-target form
+  const multiHeuristic = (node: PathNode, _targets: Set<string>): number => {
+    // If target already reached, no remaining cost
+    if (node.targetsReached.has(target)) return 0;
+    return heuristic(node.activeStates, target);
+  };
 
-    // Pop node with lowest f score
-    openList.sort((a, b) => a.f - b.f);
-    const current = openList.shift()!;
-    const key = stateSetKey(current.states);
+  const path = coreAstar(activeStates, targetSet, transitions, {
+    avoidStates: options?.avoidStates,
+    maxDepth: options?.maxDepth,
+    getCost,
+    heuristic: multiHeuristic,
+  });
 
-    if (visited.has(key)) continue;
-    visited.add(key);
-    statesVisited++;
-
-    for (const tr of transitions) {
-      if (!canApply(tr, current.states, opts)) continue;
-      if (opts.maxDepth !== undefined && current.depth + 1 > opts.maxDepth) continue;
-
-      const next = applyTransition(tr, current.states);
-      const nextKey = stateSetKey(next);
-      if (visited.has(nextKey)) continue;
-
-      const edgeCost = getEdgeCost(tr, opts);
-      const g = current.cost + edgeCost;
-      const newPath = [...current.path, tr];
-
-      if (next.has(target)) {
-        return {
-          path: newPath,
-          totalCost: g,
-          strategy: "astar",
-          searchTimeMs: Date.now() - startTime,
-          statesVisited,
-        };
-      }
-
-      const h = heuristic(next, target);
-      openList.push({
-        states: next,
-        cost: g,
-        path: newPath,
-        depth: current.depth + 1,
-        f: g + h,
-      });
-    }
-  }
-
-  return noPathResult("astar", startTime, statesVisited);
+  const statesVisited = path ? path.transitionsSequence.length + 1 : 0;
+  return pathToResult(path, "astar", startTime, statesVisited);
 }
 
 /**
- * Find the cheapest path to any of multiple target states.
+ * Find the cheapest path to ANY of multiple target states.
  *
- * Runs a single Dijkstra search that terminates when any target is reached.
- *
- * @returns The result for the cheapest reachable target.
+ * Runs a separate search for each target individually and returns the
+ * cheapest result.
  */
 export function navigateToAny(
   activeStates: Set<string>,
@@ -223,282 +309,76 @@ export function navigateToAny(
   options?: NavigationOptions,
 ): NavigationResult {
   const startTime = Date.now();
-  const opts = normalizeOptions(options);
-  const strategy = opts.strategy ?? "dijkstra";
+  const strategy = options?.strategy ?? "dijkstra";
 
   // Check if any target is already active
   for (const t of targets) {
     if (activeStates.has(t)) {
-      return emptyResult(strategy, startTime);
+      return emptyResult(strategy, startTime, activeStates, new Set([t]));
     }
   }
 
-  const targetSet = new Set(targets);
-  const visited = new Set<string>();
-  const queue: SearchNode[] = [
-    { states: new Set(activeStates), cost: 0, path: [], depth: 0 },
-  ];
-  let statesVisited = 0;
+  let bestResult: NavigationResult | null = null;
 
-  while (queue.length > 0) {
-    if (isTimedOut(startTime, opts.timeout)) break;
-
-    queue.sort((a, b) => a.cost - b.cost);
-    const current = queue.shift()!;
-    const key = stateSetKey(current.states);
-
-    if (visited.has(key)) continue;
-    visited.add(key);
-    statesVisited++;
-
-    for (const tr of transitions) {
-      if (!canApply(tr, current.states, opts)) continue;
-      if (opts.maxDepth !== undefined && current.depth + 1 > opts.maxDepth) continue;
-
-      const next = applyTransition(tr, current.states);
-      const nextKey = stateSetKey(next);
-      if (visited.has(nextKey)) continue;
-
-      const edgeCost = getEdgeCost(tr, opts);
-      const newPath = [...current.path, tr];
-
-      // Check if any target is reached
-      for (const t of targetSet) {
-        if (next.has(t)) {
-          return {
-            path: newPath,
-            totalCost: current.cost + edgeCost,
-            strategy,
-            searchTimeMs: Date.now() - startTime,
-            statesVisited,
-          };
-        }
-      }
-
-      queue.push({
-        states: next,
-        cost: current.cost + edgeCost,
-        path: newPath,
-        depth: current.depth + 1,
-      });
-    }
-  }
-
-  return noPathResult(strategy, startTime, statesVisited);
-}
-
-/**
- * Navigate from the active state set to a target state using the specified
- * strategy.
- *
- * Dispatches to the appropriate algorithm based on `options.strategy`.
- * For A*, uses a simple default heuristic (0 — degrades to Dijkstra).
- */
-export function navigate(
-  activeStates: Set<string>,
-  target: string,
-  transitions: TransitionDefinition[],
-  options?: NavigationOptions,
-): NavigationResult {
-  const strategy = options?.strategy ?? "dijkstra";
-
-  switch (strategy) {
-    case "bfs":
-      return bfsSearch(activeStates, target, transitions, options);
-
-    case "astar":
-      // Default heuristic: always 0 (admissible, degrades to Dijkstra)
-      return astarSearch(
-        activeStates,
-        target,
-        transitions,
-        () => 0,
-        options,
-      );
-
-    case "dijkstra":
-    default:
-      return dijkstraSearch(activeStates, target, transitions, options);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Dijkstra (internal, shared with navigate)
-// ---------------------------------------------------------------------------
-
-/**
- * Dijkstra search with reliability-adjusted costs and constraints.
- */
-function dijkstraSearch(
-  activeStates: Set<string>,
-  target: string,
-  transitions: TransitionDefinition[],
-  options?: NavigationOptions,
-): NavigationResult {
-  const startTime = Date.now();
-  const opts = normalizeOptions(options);
-
-  if (activeStates.has(target)) {
-    return emptyResult("dijkstra", startTime);
-  }
-
-  const visited = new Set<string>();
-  const queue: SearchNode[] = [
-    { states: new Set(activeStates), cost: 0, path: [], depth: 0 },
-  ];
-  let statesVisited = 0;
-
-  while (queue.length > 0) {
-    if (isTimedOut(startTime, opts.timeout)) break;
-
-    queue.sort((a, b) => a.cost - b.cost);
-    const current = queue.shift()!;
-    const key = stateSetKey(current.states);
-
-    if (visited.has(key)) continue;
-    visited.add(key);
-    statesVisited++;
-
-    for (const tr of transitions) {
-      if (!canApply(tr, current.states, opts)) continue;
-      if (opts.maxDepth !== undefined && current.depth + 1 > opts.maxDepth) continue;
-
-      const next = applyTransition(tr, current.states);
-      const nextKey = stateSetKey(next);
-      if (visited.has(nextKey)) continue;
-
-      const edgeCost = getEdgeCost(tr, opts);
-      const newPath = [...current.path, tr];
-
-      if (next.has(target)) {
-        return {
-          path: newPath,
-          totalCost: current.cost + edgeCost,
-          strategy: "dijkstra",
-          searchTimeMs: Date.now() - startTime,
-          statesVisited,
-        };
-      }
-
-      queue.push({
-        states: next,
-        cost: current.cost + edgeCost,
-        path: newPath,
-        depth: current.depth + 1,
-      });
-    }
-  }
-
-  return noPathResult("dijkstra", startTime, statesVisited);
-}
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-/** Serialise a Set<string> into a stable cache key. */
-function stateSetKey(states: Set<string>): string {
-  return Array.from(states).sort().join("|");
-}
-
-/** Check whether a transition's preconditions are met and constraints allow it. */
-function canApply(
-  tr: TransitionDefinition,
-  states: Set<string>,
-  opts: Required<
-    Pick<NavigationOptions, "avoidStates">
-  > & NavigationOptions,
-): boolean {
-  // Preconditions: all fromStates must be active
-  if (!tr.fromStates.every((s) => states.has(s))) return false;
-
-  // Avoid constraint: don't produce state sets containing avoided states
-  if (opts.avoidStates && opts.avoidStates.length > 0) {
-    for (const s of tr.activateStates) {
-      if (opts.avoidStates.includes(s)) return false;
-    }
-  }
-
-  return true;
-}
-
-/** Apply a transition to a state set, producing the next state set. */
-function applyTransition(
-  tr: TransitionDefinition,
-  states: Set<string>,
-): Set<string> {
-  const next = new Set(states);
-  for (const s of tr.exitStates) next.delete(s);
-  for (const s of tr.activateStates) next.add(s);
-  return next;
-}
-
-/**
- * Compute the effective edge cost for a transition, accounting for
- * reliability adjustments and state preference bonuses.
- */
-function getEdgeCost(tr: TransitionDefinition, opts: NavigationOptions): number {
-  let cost = tr.pathCost ?? 1.0;
-
-  // Reliability adjustment
-  if (opts.reliability) {
-    cost = opts.reliability.adjustedCost(tr.id, cost);
-  }
-
-  // Prefer certain target states (reduce cost by 50%)
-  if (opts.preferStates && opts.preferStates.length > 0) {
-    const prefersTarget = tr.activateStates.some((s) =>
-      opts.preferStates!.includes(s),
+  for (const target of targets) {
+    const { path, statesVisited } = runSearch(
+      activeStates,
+      new Set([target]),
+      transitions,
+      options ?? {},
     );
-    if (prefersTarget) {
-      cost *= 0.5;
+
+    if (path !== null) {
+      const result = pathToResult(path, strategy, startTime, statesVisited);
+      if (bestResult === null || result.totalCost < bestResult.totalCost) {
+        bestResult = result;
+      }
     }
   }
 
-  return cost;
-}
+  if (bestResult !== null) {
+    return bestResult;
+  }
 
-/** Normalise options with defaults. */
-function normalizeOptions(
-  options?: NavigationOptions,
-): NavigationOptions & { avoidStates: string[] } {
-  return {
-    ...options,
-    avoidStates: options?.avoidStates ?? [],
-  };
-}
-
-/** Build a result for when the target is already active. */
-function emptyResult(strategy: SearchStrategy, startTime: number): NavigationResult {
+  // No path to any target
   return {
     path: [],
-    totalCost: 0,
+    statesSequence: [],
+    targetsReached: new Set(),
+    totalCost: Infinity,
     strategy,
     searchTimeMs: Date.now() - startTime,
     statesVisited: 0,
   };
 }
 
-/** Build a result when no path was found. */
-function noPathResult(
-  strategy: SearchStrategy,
-  startTime: number,
-  statesVisited: number,
+/**
+ * Find a path reaching ALL of multiple target states (multi-target
+ * pathfinding aligned with multistate).
+ *
+ * The search space is O(V * 2^k) where k = number of targets.
+ */
+export function navigateToAll(
+  activeStates: Set<string>,
+  targets: string[],
+  transitions: TransitionDefinition[],
+  options?: NavigationOptions,
 ): NavigationResult {
-  return {
-    path: [],
-    totalCost: Infinity,
-    strategy,
-    searchTimeMs: Date.now() - startTime,
-    statesVisited,
-  };
-}
+  const startTime = Date.now();
+  const strategy = options?.strategy ?? "dijkstra";
+  const targetSet = new Set(targets);
 
-/** Check if the search has exceeded its timeout. */
-function isTimedOut(
-  startTime: number,
-  timeout: number | undefined,
-): boolean {
-  if (timeout === undefined) return false;
-  return Date.now() - startTime > timeout;
+  // Check if all targets already active
+  if ([...targetSet].every((t) => activeStates.has(t))) {
+    return emptyResult(strategy, startTime, activeStates, targetSet);
+  }
+
+  const { path, statesVisited } = runSearch(
+    activeStates,
+    targetSet,
+    transitions,
+    options ?? {},
+  );
+
+  return pathToResult(path, strategy, startTime, statesVisited);
 }
