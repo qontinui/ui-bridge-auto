@@ -86,9 +86,9 @@ export const ACTION_METADATA: Record<string, ActionTypeMetadata> = {
     description: 'Move the mouse pointer over the element.',
     category: 'interaction',
   },
-  scroll: {
+  scrollToView: {
     type: 'scrollIntoView',
-    label: 'Scroll',
+    label: 'Scroll To View',
     description: 'Scroll the viewport to make the element visible.',
     category: 'interaction',
   },
@@ -96,6 +96,12 @@ export const ACTION_METADATA: Record<string, ActionTypeMetadata> = {
     type: 'scrollIntoView',
     label: 'Scroll Into View',
     description: 'Scroll the viewport so the element is visible.',
+    category: 'interaction',
+  },
+  scroll: {
+    type: 'scroll',
+    label: 'Scroll',
+    description: 'Scroll in a direction by a specified amount.',
     category: 'interaction',
   },
   select: {
@@ -157,6 +163,39 @@ export const ACTION_METADATA: Record<string, ActionTypeMetadata> = {
     description: 'Set an HTML attribute on the element.',
     requiresValue: true,
     modifiesDOM: true,
+    category: 'input',
+  },
+  middleClick: {
+    type: 'middleClick',
+    label: 'Middle Click',
+    description: 'Perform a middle mouse button click on the element.',
+    modifiesDOM: true,
+    category: 'interaction',
+  },
+  mouseDown: {
+    type: 'mouseDown',
+    label: 'Mouse Down',
+    description: 'Press and hold a mouse button on the element.',
+    category: 'interaction',
+  },
+  mouseUp: {
+    type: 'mouseUp',
+    label: 'Mouse Up',
+    description: 'Release a held mouse button on the element.',
+    category: 'interaction',
+  },
+  keyDown: {
+    type: 'keyDown',
+    label: 'Key Down',
+    description: 'Press and hold a keyboard key on the element.',
+    requiresValue: true,
+    category: 'input',
+  },
+  keyUp: {
+    type: 'keyUp',
+    label: 'Key Up',
+    description: 'Release a held keyboard key on the element.',
+    requiresValue: true,
     category: 'input',
   },
 };

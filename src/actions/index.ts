@@ -30,6 +30,7 @@ export {
   type ChainOptions,
   type ChainResult,
   type ChainExecutor,
+  type ClickUntilCondition,
   createChainContext,
   ActionChain,
 } from './action-chain';
@@ -46,6 +47,7 @@ export {
   tryCatch,
   switchCase,
   repeatUntilElement,
+  clickUntil,
 } from './control-flow';
 
 // Retry

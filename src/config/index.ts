@@ -25,6 +25,9 @@ export type {
   SelectConfig,
   WaitConfig,
   ScrollIntoViewConfig,
+  ScrollConfig,
+  MousePressConfig,
+  KeyPressConfig,
   ActionDefaults,
 } from "./action-config";
 export {
@@ -33,6 +36,9 @@ export {
   mergeTypeConfig,
   mergeSelectConfig,
   mergeWaitConfig,
+  mergeScrollConfig,
+  mergeMousePressConfig,
+  mergeKeyPressConfig,
   mergeActionDefaults,
 } from "./action-config";
 

@@ -72,6 +72,50 @@ export interface ActionRecord {
 }
 
 // ---------------------------------------------------------------------------
+// Press timing
+// ---------------------------------------------------------------------------
+
+/** Fine-grained mouse press timing for click-like actions. */
+export interface PressTiming {
+  /** How long to hold the mouse button down (ms). Default 0 (instant). */
+  pressDurationMs?: number;
+  /** Pause after pressing the button, before release (ms). Default 0. */
+  pauseAfterPressMs?: number;
+  /** Pause after releasing the button (ms). Default 0. */
+  pauseAfterReleaseMs?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Repetition
+// ---------------------------------------------------------------------------
+
+/** Repetition configuration for actions. */
+export interface RepetitionOptions {
+  /** Number of times to repeat the action. */
+  count: number;
+  /** Pause between repetitions (ms). Default 0. */
+  pauseBetweenMs?: number;
+  /** Maximum repetitions before aborting. Default equals count. */
+  maxRepetitions?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Post-action verification
+// ---------------------------------------------------------------------------
+
+/** Post-action verification — waits for a condition after the action completes. */
+export interface VerificationSpec {
+  /** What to verify after the action. */
+  type: "elementAppears" | "elementVanishes" | "stateChange";
+  /** Element criteria for element-based verification. */
+  query?: ElementCriteria;
+  /** State ID for state-change verification. */
+  stateId?: string;
+  /** Maximum time (ms) to wait for verification (default 5000). */
+  timeout?: number;
+}
+
+// ---------------------------------------------------------------------------
 // Action execution options
 // ---------------------------------------------------------------------------
 
@@ -94,6 +138,16 @@ export interface ActionExecutionOptions {
   scrollIntoView?: boolean;
   /** Element that must exist before the action can begin. */
   precondition?: ElementCriteria;
+  /** Pause (ms) before performing the action. Default 0. */
+  pauseBeforeAction?: number;
+  /** Pause (ms) after performing the action (after idle wait). Default 0. */
+  pauseAfterAction?: number;
+  /** Mouse press timing for click-like actions. */
+  pressTiming?: PressTiming;
+  /** Repetition configuration for this action. */
+  repetition?: RepetitionOptions;
+  /** Post-action verification condition. */
+  verification?: VerificationSpec;
 }
 
 // ---------------------------------------------------------------------------
@@ -208,5 +262,7 @@ export function createDefaultExecutionOptions(): ActionExecutionOptions {
     waitForIdle: true,
     idleTimeout: 5000,
     scrollIntoView: true,
+    pauseBeforeAction: 0,
+    pauseAfterAction: 0,
   };
 }

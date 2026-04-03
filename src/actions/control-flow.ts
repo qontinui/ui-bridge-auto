@@ -7,7 +7,7 @@
 
 import type { ElementQuery } from '../core/element-query';
 import type { ActionExecutorLike } from '../state/transition-executor';
-import type { ChainStep, ChainContext } from './action-chain';
+import type { ChainStep, ChainContext, ClickUntilCondition } from './action-chain';
 import { ActionChain, createChainContext } from './action-chain';
 
 // ---------------------------------------------------------------------------
@@ -201,5 +201,72 @@ export async function repeatUntilElement(
       return true; // Keep iterating.
     },
     delayBetween: 100,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// clickUntil
+// ---------------------------------------------------------------------------
+
+/**
+ * Click an element repeatedly until a condition is met.
+ *
+ * Useful for stepping through wizards, dismissing repeated dialogs, or
+ * paginating until a target element appears or disappears.
+ *
+ * @param executor - An ActionExecutorLike to use.
+ * @param clickTarget - Query for the element to click each iteration.
+ * @param condition - When to stop clicking.
+ * @param options - Iteration, pause, and timeout limits.
+ * @returns The accumulated ChainContext.
+ */
+export async function clickUntil(
+  executor: ActionExecutorLike,
+  clickTarget: ElementQuery,
+  condition: ClickUntilCondition,
+  options?: {
+    /** Maximum number of click repetitions (default 10). */
+    maxRepetitions?: number;
+    /** Pause between clicks (ms, default 0). */
+    pauseBetweenMs?: number;
+    /** Overall timeout (ms, default 30000). */
+    timeout?: number;
+  },
+): Promise<ChainContext> {
+  const maxReps = options?.maxRepetitions ?? 10;
+  const pauseBetween = options?.pauseBetweenMs ?? 0;
+  const timeout = options?.timeout ?? 30_000;
+  const deadline = Date.now() + timeout;
+
+  const clickStep: ChainStep = {
+    type: 'action',
+    query: clickTarget,
+    action: 'click',
+  };
+
+  return loop(executor, [clickStep], {
+    maxIterations: maxReps,
+    condition: (ctx) => {
+      if (Date.now() >= deadline) {
+        ctx.errors.push(new Error(`clickUntil timed out after ${timeout}ms`));
+        ctx.aborted = true;
+        return false;
+      }
+
+      // Check condition after each click.
+      const found = executor.findElement(condition.query);
+      const conditionMet =
+        condition.type === 'elementAppears'
+          ? found !== null
+          : found === null;
+
+      if (conditionMet) {
+        ctx.variables._conditionMet = true;
+        return false; // Stop.
+      }
+
+      return true; // Keep clicking.
+    },
+    delayBetween: pauseBetween,
   });
 }

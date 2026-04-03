@@ -8,7 +8,7 @@
 
 import type { ElementQuery } from '../core/element-query';
 import type { ActionType, WaitSpec } from '../types/transition';
-import type { ChainStep, ChainContext, ChainOptions, ChainResult } from './action-chain';
+import type { ChainStep, ChainContext, ChainOptions, ChainResult, ClickUntilCondition } from './action-chain';
 import { ActionChain } from './action-chain';
 import type { ActionExecutorLike } from '../state/transition-executor';
 
@@ -165,6 +165,157 @@ export class ChainBuilder {
       action: 'sendKeys',
       params: { keys },
     });
+    return this;
+  }
+
+  /**
+   * Add a middle-click action.
+   */
+  middleClick(query: ElementQuery): ChainBuilder {
+    this._steps.push({ type: 'action', query, action: 'middleClick' });
+    return this;
+  }
+
+  /**
+   * Add a mouse-down (press and hold) action.
+   */
+  mouseDown(
+    query: ElementQuery,
+    button?: 'left' | 'right' | 'middle',
+  ): ChainBuilder {
+    this._steps.push({
+      type: 'action',
+      query,
+      action: 'mouseDown',
+      params: button ? { button } : undefined,
+    });
+    return this;
+  }
+
+  /**
+   * Add a mouse-up (release) action.
+   */
+  mouseUp(
+    query: ElementQuery,
+    button?: 'left' | 'right' | 'middle',
+  ): ChainBuilder {
+    this._steps.push({
+      type: 'action',
+      query,
+      action: 'mouseUp',
+      params: button ? { button } : undefined,
+    });
+    return this;
+  }
+
+  /**
+   * Add a key-down (press and hold key) action.
+   */
+  keyDown(
+    query: ElementQuery,
+    keys: string,
+    modifiers?: string[],
+  ): ChainBuilder {
+    this._steps.push({
+      type: 'action',
+      query,
+      action: 'keyDown',
+      params: { keys, ...(modifiers ? { modifiers } : {}) },
+    });
+    return this;
+  }
+
+  /**
+   * Add a key-up (release key) action.
+   */
+  keyUp(
+    query: ElementQuery,
+    keys: string,
+    options?: { releaseModifiersFirst?: boolean },
+  ): ChainBuilder {
+    this._steps.push({
+      type: 'action',
+      query,
+      action: 'keyUp',
+      params: {
+        keys,
+        ...(options?.releaseModifiersFirst != null
+          ? { releaseModifiersFirst: options.releaseModifiersFirst }
+          : {}),
+      },
+    });
+    return this;
+  }
+
+  /**
+   * Add a directional scroll action.
+   */
+  scroll(
+    query: ElementQuery,
+    options?: {
+      direction?: 'up' | 'down' | 'left' | 'right';
+      amount?: number;
+      smooth?: boolean;
+    },
+  ): ChainBuilder {
+    this._steps.push({
+      type: 'action',
+      query,
+      action: 'scroll',
+      params: {
+        direction: options?.direction ?? 'down',
+        amount: options?.amount ?? 3,
+        smooth: options?.smooth ?? true,
+      },
+    });
+    return this;
+  }
+
+  /**
+   * Add a wait-for-vanish step — waits for an element to disappear from the DOM.
+   */
+  waitForVanish(query: ElementQuery, timeout?: number): ChainBuilder {
+    const spec: WaitSpec = {
+      type: 'vanish',
+      query: { text: query.text, role: query.role, ariaLabel: query.ariaLabel },
+      timeout,
+    };
+    this._steps.push({ type: 'wait', spec });
+    return this;
+  }
+
+  /**
+   * Add a clickUntil step — repeatedly clicks until a condition is met.
+   */
+  clickUntil(
+    query: ElementQuery,
+    condition: ClickUntilCondition,
+    options?: {
+      maxRepetitions?: number;
+      pauseBetweenMs?: number;
+      timeout?: number;
+    },
+  ): ChainBuilder {
+    this._steps.push({
+      type: 'clickUntil',
+      query,
+      condition,
+      maxRepetitions: options?.maxRepetitions,
+      pauseBetweenMs: options?.pauseBetweenMs,
+      timeout: options?.timeout,
+    });
+    return this;
+  }
+
+  /**
+   * Annotate the last action step with repetition.
+   * Fluent modifier — modifies the most-recently-pushed action step.
+   */
+  repeat(count: number, pauseBetweenMs?: number): ChainBuilder {
+    const lastStep = this._steps[this._steps.length - 1];
+    if (lastStep && lastStep.type === 'action') {
+      lastStep.repetition = { count, pauseBetweenMs };
+    }
     return this;
   }
 

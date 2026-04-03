@@ -20,6 +20,7 @@ export type ActionType =
   | "click"
   | "doubleClick"
   | "rightClick"
+  | "middleClick"
   | "type"
   | "clear"
   | "select"
@@ -30,18 +31,23 @@ export type ActionType =
   | "blur"
   | "hover"
   | "scrollIntoView"
+  | "scroll"
   | "sendKeys"
   | "drag"
   | "submit"
   | "reset"
-  | "setValue";
+  | "setValue"
+  | "mouseDown"
+  | "mouseUp"
+  | "keyDown"
+  | "keyUp";
 
 // ---------------------------------------------------------------------------
 // Wait specification
 // ---------------------------------------------------------------------------
 
 /** How to wait after an action completes. */
-export type WaitType = "idle" | "element" | "state" | "time" | "condition";
+export type WaitType = "idle" | "element" | "state" | "time" | "condition" | "vanish";
 
 /**
  * Specification for what to wait for after an action executes.

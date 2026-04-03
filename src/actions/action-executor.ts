@@ -170,7 +170,18 @@ export class ActionExecutor {
     markExecuting(record);
 
     try {
-      const doAction = () => this.config.performAction(elementId, action, params);
+      // Pre-action pause.
+      if (opts.pauseBeforeAction && opts.pauseBeforeAction > 0) {
+        await this.delay(opts.pauseBeforeAction);
+      }
+
+      // Merge press timing into params so the DOM driver can use it.
+      const mergedParams =
+        opts.pressTiming
+          ? { ...params, _pressTiming: opts.pressTiming }
+          : params;
+
+      const doAction = () => this.config.performAction(elementId, action, mergedParams);
 
       if (retryOpts) {
         // Wrap execution in retry logic.
@@ -187,6 +198,11 @@ export class ActionExecutor {
       // Wait for idle if requested.
       if (opts.waitForIdle && this.config.waitForIdle) {
         await this.config.waitForIdle(opts.idleTimeout);
+      }
+
+      // Post-action pause.
+      if (opts.pauseAfterAction && opts.pauseAfterAction > 0) {
+        await this.delay(opts.pauseAfterAction);
       }
 
       // Mark as completed and set "success" status for consumer compatibility.

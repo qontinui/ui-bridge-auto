@@ -8,7 +8,7 @@
 
 import type { ElementQuery } from '../core/element-query';
 import type { ActionType, WaitSpec } from '../types/transition';
-import type { ActionRecord } from '../types/action';
+import type { ActionRecord, RepetitionOptions } from '../types/action';
 import {
   createActionRecord,
   markExecuting,
@@ -21,14 +21,23 @@ import type { ActionExecutorLike } from '../state/transition-executor';
 // Step types
 // ---------------------------------------------------------------------------
 
+/** Condition for the clickUntil step. */
+export interface ClickUntilCondition {
+  /** What to check after each click. */
+  type: 'elementAppears' | 'elementVanishes';
+  /** Element query for the condition check. */
+  query: ElementQuery;
+}
+
 /** A single step in an action chain. */
 export type ChainStep =
-  | { type: 'action'; query: ElementQuery; action: ActionType; params?: Record<string, unknown> }
+  | { type: 'action'; query: ElementQuery; action: ActionType; params?: Record<string, unknown>; repetition?: RepetitionOptions }
   | { type: 'wait'; spec: WaitSpec }
   | { type: 'branch'; condition: (context: ChainContext) => boolean; ifTrue: ChainStep[]; ifFalse?: ChainStep[] }
   | { type: 'parallel'; steps: ChainStep[][] }
   | { type: 'extract'; query: ElementQuery; property: string; variable: string }
-  | { type: 'assert'; query: ElementQuery; property: string; expected: unknown };
+  | { type: 'assert'; query: ElementQuery; property: string; expected: unknown }
+  | { type: 'clickUntil'; query: ElementQuery; condition: ClickUntilCondition; maxRepetitions?: number; pauseBetweenMs?: number; timeout?: number };
 
 // ---------------------------------------------------------------------------
 // Context
@@ -202,6 +211,9 @@ export class ActionChain {
       case 'assert':
         await this.executeAssertStep(step, ctx);
         break;
+      case 'clickUntil':
+        await this.executeClickUntilStep(step, ctx, opts);
+        break;
     }
   }
 
@@ -211,46 +223,56 @@ export class ActionChain {
     ctx: ChainContext,
     opts: ChainOptions,
   ): Promise<void> {
-    const found = this._executor.findElement(step.query);
-    const recordId = `chain-action-${this.nextId++}`;
+    const reps = step.repetition?.count ?? 1;
+    const pauseBetween = step.repetition?.pauseBetweenMs ?? 0;
 
-    if (!found) {
+    for (let rep = 0; rep < reps; rep++) {
+      const found = this._executor.findElement(step.query);
+      const recordId = `chain-action-${this.nextId++}`;
+
+      if (!found) {
+        const record = createActionRecord(
+          recordId,
+          step.action,
+          'not-found',
+          undefined,
+          step.params,
+        );
+        markFailed(record, `No element found matching query: ${JSON.stringify(step.query)}`);
+        ctx.results.push(record);
+
+        opts.onStepComplete?.(step, record);
+        throw new Error(record.error);
+      }
+
       const record = createActionRecord(
         recordId,
         step.action,
-        'not-found',
+        found.id,
         undefined,
         step.params,
       );
-      markFailed(record, `No element found matching query: ${JSON.stringify(step.query)}`);
+      markExecuting(record);
+
+      try {
+        await this._executor.executeAction(found.id, step.action, step.params);
+        markCompleted(record);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        markFailed(record, message);
+      }
+
       ctx.results.push(record);
-
       opts.onStepComplete?.(step, record);
-      throw new Error(record.error);
-    }
 
-    const record = createActionRecord(
-      recordId,
-      step.action,
-      found.id,
-      undefined,
-      step.params,
-    );
-    markExecuting(record);
+      if (record.status === 'failed') {
+        throw new Error(record.error ?? `Action "${step.action}" failed`);
+      }
 
-    try {
-      await this._executor.executeAction(found.id, step.action, step.params);
-      markCompleted(record);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      markFailed(record, message);
-    }
-
-    ctx.results.push(record);
-    opts.onStepComplete?.(step, record);
-
-    if (record.status === 'failed') {
-      throw new Error(record.error ?? `Action "${step.action}" failed`);
+      // Pause between repetitions.
+      if (rep < reps - 1 && pauseBetween > 0) {
+        await new Promise((resolve) => setTimeout(resolve, pauseBetween));
+      }
     }
   }
 
@@ -279,6 +301,23 @@ export class ActionChain {
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
         break;
+      }
+      case 'vanish': {
+        const timeout = spec.timeout ?? 10_000;
+        const interval = 100;
+        const started = Date.now();
+        while (Date.now() - started < timeout) {
+          if (spec.query) {
+            const found = this._executor.findElement({
+              text: spec.query.text,
+              role: spec.query.role,
+              ariaLabel: spec.query.ariaLabel,
+            });
+            if (!found) return; // Element vanished
+          }
+          await new Promise((resolve) => setTimeout(resolve, interval));
+        }
+        throw new Error(`waitForVanish timed out after ${timeout}ms`);
       }
     }
   }
@@ -367,5 +406,68 @@ export class ActionChain {
         );
       }
     }
+  }
+
+  /** Execute a clickUntil step — repeatedly clicks until a condition is met. */
+  private async executeClickUntilStep(
+    step: Extract<ChainStep, { type: 'clickUntil' }>,
+    ctx: ChainContext,
+    opts: ChainOptions,
+  ): Promise<void> {
+    const maxReps = step.maxRepetitions ?? 10;
+    const pauseBetween = step.pauseBetweenMs ?? 0;
+    const timeout = step.timeout ?? 30_000;
+    const started = Date.now();
+
+    for (let i = 0; i < maxReps; i++) {
+      if (Date.now() - started > timeout) {
+        throw new Error(`clickUntil timed out after ${timeout}ms`);
+      }
+
+      // Click the target.
+      const found = this._executor.findElement(step.query);
+      const recordId = `chain-action-${this.nextId++}`;
+
+      if (!found) {
+        const record = createActionRecord(recordId, 'click', 'not-found', undefined);
+        markFailed(record, `clickUntil: no element found matching query: ${JSON.stringify(step.query)}`);
+        ctx.results.push(record);
+        throw new Error(record.error);
+      }
+
+      const record = createActionRecord(recordId, 'click', found.id);
+      markExecuting(record);
+
+      try {
+        await this._executor.executeAction(found.id, 'click');
+        markCompleted(record);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        markFailed(record, message);
+      }
+
+      ctx.results.push(record);
+      opts.onStepComplete?.(step, record);
+
+      if (record.status === 'failed') {
+        throw new Error(record.error ?? 'clickUntil: click failed');
+      }
+
+      // Check condition.
+      const conditionElement = this._executor.findElement(step.condition.query);
+      const conditionMet =
+        step.condition.type === 'elementAppears'
+          ? conditionElement !== null
+          : conditionElement === null;
+
+      if (conditionMet) return;
+
+      // Pause before next iteration.
+      if (pauseBetween > 0) {
+        await new Promise((resolve) => setTimeout(resolve, pauseBetween));
+      }
+    }
+
+    throw new Error(`clickUntil: condition not met after ${maxReps} repetitions`);
   }
 }

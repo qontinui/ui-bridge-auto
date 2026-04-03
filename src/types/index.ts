@@ -59,6 +59,9 @@ export type {
   ActionRecord,
   ActionStatus,
   ActionExecutionOptions,
+  PressTiming,
+  RepetitionOptions,
+  VerificationSpec,
 } from "./action";
 export {
   createActionRecord,
