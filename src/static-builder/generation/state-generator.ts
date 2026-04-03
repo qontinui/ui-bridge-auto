@@ -183,6 +183,13 @@ function selectLandmarks(elements: ExtractedElement[]): ElementQuery[] {
   const landmarks: ElementQuery[] = [];
   const MAX_LANDMARKS = 8;
 
+  // Priority 0: data-page-id (definitive state identifier, always include)
+  for (const el of elements) {
+    if (el.query.attributes?.["data-page-id"]) {
+      landmarks.push(el.query);
+    }
+  }
+
   // Priority 1: Elements with role (structural landmarks)
   for (const el of elements) {
     if (landmarks.length >= MAX_LANDMARKS) break;
