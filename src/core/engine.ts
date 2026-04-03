@@ -19,23 +19,7 @@ import {
   executeTransition as execTr,
   navigateToState as navTo,
 } from "../state/transition-executor";
-
-// ---------------------------------------------------------------------------
-// Action step (user-facing sequence item)
-// ---------------------------------------------------------------------------
-
-export interface ActionStep {
-  target: ElementQuery;
-  action: string;
-  params?: Record<string, unknown>;
-  waitAfter?: {
-    type: "idle" | "element" | "state" | "time";
-    query?: ElementQuery;
-    stateId?: string;
-    ms?: number;
-    timeout?: number;
-  };
-}
+import type { ActionStep } from "../batch/action-sequence";
 
 // ---------------------------------------------------------------------------
 // AutomationEngine

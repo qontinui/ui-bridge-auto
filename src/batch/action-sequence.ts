@@ -10,6 +10,7 @@
 import type { ElementQuery, QueryableElement } from "../core/element-query";
 import { findFirst } from "../core/element-query";
 import type { ActionExecutorLike } from "../state/transition-executor";
+import type { ActionType } from "../types/transition";
 import { generateStableId } from "../discovery/stable-id";
 
 // ---------------------------------------------------------------------------
@@ -18,14 +19,7 @@ import { generateStableId } from "../discovery/stable-id";
 
 export interface ActionStep {
   target: ElementQuery;
-  action:
-    | "click"
-    | "type"
-    | "clear"
-    | "select"
-    | "focus"
-    | "hover"
-    | "scrollIntoView";
+  action: ActionType;
   params?: Record<string, unknown>;
   waitBefore?: WaitSpec;
   waitAfter?: WaitSpec;

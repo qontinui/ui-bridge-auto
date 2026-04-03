@@ -241,5 +241,38 @@ export {
   fingerprintMatch,
 } from "./discovery/element-fingerprint";
 
+// Actions
+export {
+  type ActionTypeMetadata,
+  ACTION_METADATA,
+  validateActionParams,
+  getActionsByCategory,
+  type ActionExecutorConfig,
+  type ExecuteOptions,
+  ActionExecutor,
+  type ChainStep,
+  type ChainContext,
+  type ChainOptions,
+  type ChainResult,
+  type ChainExecutor,
+  createChainContext,
+  ActionChain,
+  ChainBuilder,
+  ConditionalBuilder,
+  loop,
+  tryCatch,
+  switchCase,
+  repeatUntilElement,
+  type RetryOptions,
+  type DelayOptions,
+  createDefaultRetryOptions,
+  computeDelay,
+  withRetry,
+  extractValue,
+  extractToVariable,
+  interpolate,
+  evaluateExpression,
+} from "./actions";
+
 // Server
 export { createAutoHandlers } from "./server/endpoints";
