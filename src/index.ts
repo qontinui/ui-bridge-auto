@@ -150,6 +150,55 @@ export {
 } from "./core/element-query";
 export { AutomationEngine } from "./core/engine";
 
+// Core — fuzzy matching
+export {
+  levenshteinDistance,
+  similarity,
+  isFuzzyMatch,
+  bestFuzzyMatch,
+  tokenMatch,
+} from "./core/fuzzy-match";
+
+// Core — semantic matching
+export {
+  type SemanticQuery,
+  type SemanticResult,
+  matchesSemantic,
+  semanticSearch,
+} from "./core/semantic-match";
+
+// Core — spatial queries
+export {
+  type NearQuery,
+  elementCenter,
+  elementDistance,
+  findNear,
+  computeRelation,
+  findByRelation,
+} from "./core/spatial-query";
+
+// Core — query ranking
+export {
+  type ScoreBreakdown,
+  type RankedResult,
+  computeMatchScore,
+  rankResults,
+} from "./core/query-ranking";
+
+// Core — query compiler
+export {
+  type CompiledQuery,
+  compileQuery,
+  QueryCache,
+} from "./core/query-compiler";
+
+// Core — query debugger
+export {
+  explainQueryMatch,
+  diagnoseNoResults,
+  formatExplanation,
+} from "./core/query-debugger";
+
 // State
 export {
   StateMachine,

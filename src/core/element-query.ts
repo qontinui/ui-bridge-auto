@@ -6,6 +6,8 @@
  * in-memory registry — no DOM traversal needed.
  */
 
+import { isFuzzyMatch } from "./fuzzy-match";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -51,6 +53,28 @@ export interface ElementQuery {
   and?: ElementQuery[];
   or?: ElementQuery[];
   not?: ElementQuery;
+
+  // Fuzzy matching
+  /** Fuzzy text match with configurable threshold. */
+  fuzzyText?: string;
+  /** Threshold for fuzzy matching (0.0-1.0, default 0.7). */
+  fuzzyThreshold?: number;
+
+  // Semantic
+  /** Match element's purpose (data-purpose attribute). */
+  purpose?: string;
+  /** Match element's semanticType (data-semantic-type attribute). */
+  semanticType?: string;
+  /** Match any of element's aliases (data-aliases attribute). */
+  alias?: string;
+
+  // Spatial (relative to another element)
+  /** Find elements near another element matched by a sub-query. */
+  near?: { query: ElementQuery; maxDistance: number };
+
+  // Index hint (for compiled queries)
+  /** @internal Index key hint set by the query compiler. */
+  _compiledIndex?: string;
 }
 
 export interface QueryResult {
@@ -225,6 +249,41 @@ export function matchesQuery(
     }
   }
 
+  // --- Fuzzy text ---
+  if (query.fuzzyText !== undefined) {
+    const threshold = query.fuzzyThreshold ?? 0.7;
+    if (!isFuzzyMatch(query.fuzzyText.toLowerCase(), text.toLowerCase(), threshold))
+      return { matches: false, reasons };
+    reasons.push(`fuzzyText~"${query.fuzzyText}"`);
+  }
+
+  // --- Semantic: purpose ---
+  if (query.purpose !== undefined) {
+    const purpose = el.element.getAttribute("data-purpose") ?? el.element.dataset?.purpose ?? "";
+    if (purpose.toLowerCase() !== query.purpose.toLowerCase())
+      return { matches: false, reasons };
+    reasons.push(`purpose="${purpose}"`);
+  }
+
+  // --- Semantic: semanticType ---
+  if (query.semanticType !== undefined) {
+    const semType = el.element.getAttribute("data-semantic-type") ?? el.element.dataset?.semanticType ?? "";
+    if (semType.toLowerCase() !== query.semanticType.toLowerCase())
+      return { matches: false, reasons };
+    reasons.push(`semanticType="${semType}"`);
+  }
+
+  // --- Semantic: alias ---
+  if (query.alias !== undefined) {
+    const aliases = (el.element.getAttribute("data-aliases") ?? "")
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    if (!aliases.includes(query.alias.toLowerCase()))
+      return { matches: false, reasons };
+    reasons.push(`alias="${query.alias}"`);
+  }
+
   // --- Structural ---
   if (query.parent) {
     const parentEl = el.element.parentElement;
@@ -283,33 +342,78 @@ export function matchesQuery(
 
 /**
  * Execute a query against a collection of registered elements.
+ * Handles cross-element criteria (like `near`) that matchesQuery cannot evaluate alone.
  */
 export function executeQuery(
   elements: QueryableElement[],
   query: ElementQuery,
 ): QueryResult[] {
-  const results: QueryResult[] = [];
+  // First pass: evaluate single-element criteria
+  const candidates: Array<{ el: QueryableElement; reasons: string[] }> = [];
   for (const el of elements) {
     const { matches, reasons } = matchesQuery(el, query);
     if (matches) {
-      results.push({
-        id: el.id,
-        label: el.label,
-        type: el.type,
-        matchReasons: reasons,
-      });
+      candidates.push({ el, reasons });
     }
   }
-  return results;
+
+  // Second pass: evaluate cross-element criteria (near)
+  let results = candidates;
+  if (query.near) {
+    const refResults = executeQuery(elements, query.near.query);
+    if (refResults.length === 0) {
+      return []; // Reference element not found — no matches
+    }
+    const refEl = elements.find((e) => e.id === refResults[0].id);
+    if (refEl) {
+      const refState = refEl.getState();
+      const refRect = refState.rect;
+      if (refRect) {
+        results = candidates.filter(({ el, reasons }) => {
+          const elState = el.getState();
+          const elRect = elState.rect;
+          if (!elRect) return false;
+          const dist = rectDistance(elRect, refRect);
+          if (dist <= query.near!.maxDistance) {
+            reasons.push(`near(${refResults[0].id}, ${Math.round(dist)}px)`);
+            return true;
+          }
+          return false;
+        });
+      }
+    }
+  }
+
+  return results.map(({ el, reasons }) => ({
+    id: el.id,
+    label: el.label,
+    type: el.type,
+    matchReasons: reasons,
+  }));
+}
+
+/** Edge-to-edge distance between two rects (0 if overlapping). */
+function rectDistance(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): number {
+  const dx = Math.max(0, Math.max(a.x, b.x) - Math.min(a.x + a.width, b.x + b.width));
+  const dy = Math.max(0, Math.max(a.y, b.y) - Math.min(a.y + a.height, b.y + b.height));
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
 /**
  * Find the first element matching the query.
+ * For queries with cross-element criteria (near), delegates to executeQuery.
  */
 export function findFirst(
   elements: QueryableElement[],
   query: ElementQuery,
 ): QueryResult | null {
+  if (query.near) {
+    const results = executeQuery(elements, query);
+    return results.length > 0 ? results[0] : null;
+  }
   for (const el of elements) {
     const { matches, reasons } = matchesQuery(el, query);
     if (matches) {
