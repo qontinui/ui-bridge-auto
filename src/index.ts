@@ -324,5 +324,30 @@ export {
   evaluateExpression,
 } from "./actions";
 
+// Execution engine
+export {
+  VariableContext,
+  type Connection,
+  type ConnectionCondition,
+  type RouteResult,
+  ConnectionRouter,
+  type CriteriaType,
+  type SuccessCriteria,
+  type NodeResult,
+  evaluateCriteria,
+  allMustPass,
+  anyMustPass,
+  percentageMustPass,
+  type ExecutionPhase,
+  type TrackerEvent,
+  ExecutionTracker,
+  type ExecutionControllerConfig,
+  ExecutionController,
+  type WorkflowGraph,
+  type WorkflowNode,
+  type ExecutionResult,
+  GraphExecutor,
+} from "./execution";
+
 // Server
 export { createAutoHandlers } from "./server/endpoints";
