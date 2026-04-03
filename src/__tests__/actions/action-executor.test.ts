@@ -188,4 +188,90 @@ describe("ActionExecutor options", () => {
     expect(record.status).toBe("success");
     expect(performed).toHaveLength(1);
   });
+
+  it("applies pauseBeforeAction delay", async () => {
+    const btn = createButton("Pause");
+    mockRegistry.addElement(btn);
+    const executor = createExecutor();
+
+    const start = Date.now();
+    const record = await executor.execute({ text: "Pause" }, "click", undefined, {
+      pauseBeforeAction: 50,
+      waitForIdle: false,
+    });
+    const elapsed = Date.now() - start;
+
+    expect(record.status).toBe("success");
+    expect(elapsed).toBeGreaterThanOrEqual(40); // Allow slight timing variance
+  });
+
+  it("applies pauseAfterAction delay", async () => {
+    const btn = createButton("PauseAfter");
+    mockRegistry.addElement(btn);
+    const executor = createExecutor();
+
+    const start = Date.now();
+    const record = await executor.execute({ text: "PauseAfter" }, "click", undefined, {
+      pauseAfterAction: 50,
+      waitForIdle: false,
+    });
+    const elapsed = Date.now() - start;
+
+    expect(record.status).toBe("success");
+    expect(elapsed).toBeGreaterThanOrEqual(40);
+  });
+
+  it("verification succeeds when element appears", async () => {
+    const btn = createButton("Verify");
+    mockRegistry.addElement(btn);
+    // Add the verification target element so it's found immediately
+    const target = createButton("Result");
+    mockRegistry.addElement(target);
+    const executor = createExecutor();
+
+    const record = await executor.execute({ text: "Verify" }, "click", undefined, {
+      verification: {
+        type: "elementAppears",
+        query: { text: "Result" },
+        timeout: 1000,
+      },
+      waitForIdle: false,
+    });
+
+    expect(record.status).toBe("success");
+  });
+
+  it("verification fails when element never appears", async () => {
+    const btn = createButton("Verify2");
+    mockRegistry.addElement(btn);
+    const executor = createExecutor();
+
+    const record = await executor.execute({ text: "Verify2" }, "click", undefined, {
+      verification: {
+        type: "elementAppears",
+        query: { text: "NeverShows" },
+        timeout: 200,
+      },
+      waitForIdle: false,
+    });
+
+    expect(record.status).toBe("failed");
+    expect(record.error).toContain("verification");
+  });
+
+  it("merges pressTiming into params for performAction", async () => {
+    const btn = createButton("Press");
+    mockRegistry.addElement(btn);
+    const executor = createExecutor();
+
+    await executor.execute({ text: "Press" }, "click", { extra: "val" }, {
+      pressTiming: { pressDurationMs: 100, pauseAfterPressMs: 50 },
+      waitForIdle: false,
+    });
+
+    expect(performed).toHaveLength(1);
+    expect(performed[0].params).toHaveProperty("extra", "val");
+    expect(performed[0].params).toHaveProperty("_pressTiming");
+    expect((performed[0].params as any)._pressTiming.pressDurationMs).toBe(100);
+  });
 });

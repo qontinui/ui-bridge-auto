@@ -14,13 +14,15 @@ describe("ACTION_METADATA", () => {
     "click",
     "doubleClick",
     "rightClick",
+    "middleClick",
     "type",
     "clear",
     "focus",
     "blur",
     "hover",
-    "scroll",
+    "scrollToView",
     "scrollIntoView",
+    "scroll",
     "select",
     "check",
     "uncheck",
@@ -29,6 +31,10 @@ describe("ACTION_METADATA", () => {
     "dragAndDrop",
     "upload",
     "setAttribute",
+    "mouseDown",
+    "mouseUp",
+    "keyDown",
+    "keyUp",
   ];
 
   it("has entries for all expected action types", () => {
@@ -74,6 +80,37 @@ describe("validateActionParams", () => {
   it("returns error for unknown action type", () => {
     const result = validateActionParams("nonexistent" as any, {});
     expect(result.valid).toBe(false);
+  });
+
+  it("validates keyDown requires a value (keys)", () => {
+    const missing = validateActionParams("keyDown", {});
+    expect(missing.valid).toBe(false);
+
+    const valid = validateActionParams("keyDown", { keys: "a" });
+    expect(valid.valid).toBe(true);
+  });
+
+  it("validates keyUp requires a value (keys)", () => {
+    const missing = validateActionParams("keyUp", {});
+    expect(missing.valid).toBe(false);
+
+    const valid = validateActionParams("keyUp", { keys: "a" });
+    expect(valid.valid).toBe(true);
+  });
+
+  it("validates middleClick needs no value", () => {
+    const result = validateActionParams("middleClick", {});
+    expect(result.valid).toBe(true);
+  });
+
+  it("validates scroll needs no value", () => {
+    const result = validateActionParams("scroll", {});
+    expect(result.valid).toBe(true);
+  });
+
+  it("validates mouseDown needs no value", () => {
+    const result = validateActionParams("mouseDown", {});
+    expect(result.valid).toBe(true);
   });
 });
 

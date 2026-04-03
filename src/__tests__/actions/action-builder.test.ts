@@ -82,6 +82,98 @@ describe("ChainBuilder — fluent API", () => {
 });
 
 // ---------------------------------------------------------------------------
+// New action methods
+// ---------------------------------------------------------------------------
+
+describe("ChainBuilder — new action methods", () => {
+  it("middleClick() produces correct step", () => {
+    const steps = new ChainBuilder(executor).middleClick({ role: "button" }).steps();
+    const s = steps[0] as { type: string; action: string };
+    expect(s.type).toBe("action");
+    expect(s.action).toBe("middleClick");
+  });
+
+  it("mouseDown() produces step with button param", () => {
+    const steps = new ChainBuilder(executor).mouseDown({ role: "slider" }, "right").steps();
+    const s = steps[0] as { type: string; action: string; params?: Record<string, unknown> };
+    expect(s.action).toBe("mouseDown");
+    expect(s.params).toEqual({ button: "right" });
+  });
+
+  it("mouseUp() produces step without params when no button specified", () => {
+    const steps = new ChainBuilder(executor).mouseUp({ role: "slider" }).steps();
+    const s = steps[0] as { type: string; action: string; params?: Record<string, unknown> };
+    expect(s.action).toBe("mouseUp");
+    expect(s.params).toBeUndefined();
+  });
+
+  it("keyDown() produces step with keys and modifiers", () => {
+    const steps = new ChainBuilder(executor).keyDown({ role: "textbox" }, "a", ["ctrl"]).steps();
+    const s = steps[0] as { type: string; action: string; params?: Record<string, unknown> };
+    expect(s.action).toBe("keyDown");
+    expect(s.params).toEqual({ keys: "a", modifiers: ["ctrl"] });
+  });
+
+  it("keyUp() produces step with keys", () => {
+    const steps = new ChainBuilder(executor).keyUp({ role: "textbox" }, "a").steps();
+    const s = steps[0] as { type: string; action: string; params?: Record<string, unknown> };
+    expect(s.action).toBe("keyUp");
+    expect(s.params).toEqual({ keys: "a" });
+  });
+
+  it("scroll() produces step with direction and amount params", () => {
+    const steps = new ChainBuilder(executor)
+      .scroll({ role: "list" }, { direction: "up", amount: 5 })
+      .steps();
+    const s = steps[0] as { type: string; action: string; params?: Record<string, unknown> };
+    expect(s.action).toBe("scroll");
+    expect(s.params).toEqual({ direction: "up", amount: 5, smooth: true });
+  });
+
+  it("scroll() uses defaults when no options provided", () => {
+    const steps = new ChainBuilder(executor).scroll({ role: "list" }).steps();
+    const s = steps[0] as { type: string; action: string; params?: Record<string, unknown> };
+    expect(s.params).toEqual({ direction: "down", amount: 3, smooth: true });
+  });
+
+  it("waitForVanish() adds a vanish wait step", () => {
+    const steps = new ChainBuilder(executor)
+      .waitForVanish({ text: "Loading..." }, 5000)
+      .steps();
+    expect(steps).toHaveLength(1);
+    const s = steps[0] as { type: string; spec: { type: string; timeout?: number } };
+    expect(s.type).toBe("wait");
+    expect(s.spec.type).toBe("vanish");
+    expect(s.spec.timeout).toBe(5000);
+  });
+
+  it("clickUntil() adds a clickUntil step", () => {
+    const steps = new ChainBuilder(executor)
+      .clickUntil(
+        { text: "Next" },
+        { type: "elementAppears", query: { text: "Done" } },
+        { maxRepetitions: 5, pauseBetweenMs: 200 },
+      )
+      .steps();
+    expect(steps).toHaveLength(1);
+    const s = steps[0] as { type: string; maxRepetitions?: number; pauseBetweenMs?: number };
+    expect(s.type).toBe("clickUntil");
+    expect(s.maxRepetitions).toBe(5);
+    expect(s.pauseBetweenMs).toBe(200);
+  });
+
+  it("repeat() annotates the last action step with repetition", () => {
+    const steps = new ChainBuilder(executor)
+      .click({ text: "Save" })
+      .repeat(3, 500)
+      .steps();
+    expect(steps).toHaveLength(1);
+    const s = steps[0] as { type: string; repetition?: { count: number; pauseBetweenMs?: number } };
+    expect(s.repetition).toEqual({ count: 3, pauseBetweenMs: 500 });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Branching
 // ---------------------------------------------------------------------------
 

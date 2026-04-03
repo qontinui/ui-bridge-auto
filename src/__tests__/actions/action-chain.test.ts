@@ -159,6 +159,132 @@ describe("ActionChain — assert", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Repetition
+// ---------------------------------------------------------------------------
+
+describe("ActionChain — repetition", () => {
+  it("repeats an action step the specified number of times", async () => {
+    const steps: ChainStep[] = [
+      { type: "action", query: { text: "Inc" }, action: "click", repetition: { count: 3 } },
+    ];
+
+    const chain = new ActionChain(executor, steps);
+    const result = await chain.execute();
+
+    expect(result.success).toBe(true);
+    expect(executor.executedActions).toHaveLength(3);
+    expect(executor.executedActions.every(a => a.action === "click")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Vanish wait
+// ---------------------------------------------------------------------------
+
+describe("ActionChain — vanish wait", () => {
+  it("resolves immediately when element is not found", async () => {
+    // Override findElement so the vanish target is never found
+    const originalFind = executor.findElement.bind(executor);
+    executor.findElement = (query) => {
+      if (query.text === "Loading") return null;
+      return originalFind(query);
+    };
+
+    const steps: ChainStep[] = [
+      { type: "wait", spec: { type: "vanish", query: { text: "Loading" }, timeout: 1000 } },
+    ];
+
+    const chain = new ActionChain(executor, steps);
+    const result = await chain.execute();
+
+    expect(result.success).toBe(true);
+  });
+
+  it("times out when element remains present", async () => {
+    // Override findElement to always find "Loading"
+    const originalFind = executor.findElement.bind(executor);
+    executor.findElement = (query) => {
+      if (query.text === "Loading") return { id: "loading-el" };
+      return originalFind(query);
+    };
+
+    const steps: ChainStep[] = [
+      { type: "wait", spec: { type: "vanish", query: { text: "Loading" }, timeout: 200 } },
+    ];
+
+    const chain = new ActionChain(executor, steps);
+    const result = await chain.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.context.errors.length).toBeGreaterThan(0);
+    expect(result.context.errors[0].message).toContain("waitForVanish timed out");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// clickUntil
+// ---------------------------------------------------------------------------
+
+describe("ActionChain — clickUntil", () => {
+  it("clicks until condition element appears", async () => {
+    let clickCount = 0;
+    const originalFind = executor.findElement.bind(executor);
+    executor.findElement = (query) => {
+      // After 3 clicks, the "Done" element appears
+      if (query.text === "Done") {
+        return clickCount >= 3 ? { id: "done-el" } : null;
+      }
+      return originalFind(query);
+    };
+
+    const originalExecute = executor.executeAction.bind(executor);
+    executor.executeAction = async (id, action, params) => {
+      clickCount++;
+      return originalExecute(id, action, params);
+    };
+
+    const steps: ChainStep[] = [
+      {
+        type: "clickUntil",
+        query: { text: "Next" },
+        condition: { type: "elementAppears", query: { text: "Done" } },
+        maxRepetitions: 10,
+      },
+    ];
+
+    const chain = new ActionChain(executor, steps);
+    const result = await chain.execute();
+
+    expect(result.success).toBe(true);
+    expect(clickCount).toBe(3);
+  });
+
+  it("fails when condition not met after max repetitions", async () => {
+    // Override findElement so the condition target is never found
+    const originalFind = executor.findElement.bind(executor);
+    executor.findElement = (query) => {
+      if (query.text === "NeverAppears") return null;
+      return originalFind(query);
+    };
+
+    const steps: ChainStep[] = [
+      {
+        type: "clickUntil",
+        query: { text: "Next" },
+        condition: { type: "elementAppears", query: { text: "NeverAppears" } },
+        maxRepetitions: 2,
+      },
+    ];
+
+    const chain = new ActionChain(executor, steps);
+    const result = await chain.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.context.errors[0].message).toContain("condition not met");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // stopOnError
 // ---------------------------------------------------------------------------
 

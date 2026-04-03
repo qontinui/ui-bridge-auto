@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { loop, tryCatch, switchCase } from "../../actions/control-flow";
+import { loop, tryCatch, switchCase, clickUntil } from "../../actions/control-flow";
 import { MockActionExecutor } from "../../test-utils/mock-executor";
 import { resetIdCounter } from "../../test-utils/mock-elements";
 import type { ChainStep } from "../../actions/action-chain";
@@ -140,5 +140,60 @@ describe("switchCase", () => {
 
     expect(executor.executedActions).toHaveLength(1);
     expect(executor.executedActions[0].elementId).toBe("guest-btn");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// clickUntil
+// ---------------------------------------------------------------------------
+
+describe("clickUntil", () => {
+  it("clicks until condition element appears", async () => {
+    let clickCount = 0;
+    const originalFind = executor.findElement.bind(executor);
+    executor.findElement = (query) => {
+      if (query.text === "Done") {
+        return clickCount >= 3 ? { id: "done-el" } : null;
+      }
+      return originalFind(query);
+    };
+
+    const originalExec = executor.executeAction.bind(executor);
+    executor.executeAction = async (id, action, params) => {
+      clickCount++;
+      return originalExec(id, action, params);
+    };
+
+    const ctx = await clickUntil(
+      executor,
+      { text: "Next" },
+      { type: "elementAppears", query: { text: "Done" } },
+      { maxRepetitions: 10 },
+    );
+
+    expect(ctx.variables._conditionMet).toBe(true);
+    // The loop runs the click step, then checks condition.
+    // After 3 clicks, condition is met, so loop stops.
+    expect(clickCount).toBe(3);
+  });
+
+  it("stops after maxRepetitions even if condition not met", async () => {
+    // Override findElement so the condition target is never found
+    const originalFind = executor.findElement.bind(executor);
+    executor.findElement = (query) => {
+      if (query.text === "NeverAppears") return null;
+      return originalFind(query);
+    };
+
+    const ctx = await clickUntil(
+      executor,
+      { text: "Next" },
+      { type: "elementAppears", query: { text: "NeverAppears" } },
+      { maxRepetitions: 3 },
+    );
+
+    // loop() runs 3 iterations, condition never met
+    expect(executor.executedActions).toHaveLength(3);
+    expect(ctx.variables._conditionMet).toBeUndefined();
   });
 });

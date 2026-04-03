@@ -223,7 +223,9 @@ export class ActionChain {
     ctx: ChainContext,
     opts: ChainOptions,
   ): Promise<void> {
-    const reps = step.repetition?.count ?? 1;
+    const count = step.repetition?.count ?? 1;
+    const maxReps = step.repetition?.maxRepetitions ?? count;
+    const reps = Math.min(count, maxReps);
     const pauseBetween = step.repetition?.pauseBetweenMs ?? 0;
 
     for (let rep = 0; rep < reps; rep++) {
@@ -453,6 +455,11 @@ export class ActionChain {
         throw new Error(record.error ?? 'clickUntil: click failed');
       }
 
+      // Pause after click to let DOM settle before checking condition.
+      if (pauseBetween > 0) {
+        await new Promise((resolve) => setTimeout(resolve, pauseBetween));
+      }
+
       // Check condition.
       const conditionElement = this._executor.findElement(step.condition.query);
       const conditionMet =
@@ -461,11 +468,6 @@ export class ActionChain {
           : conditionElement === null;
 
       if (conditionMet) return;
-
-      // Pause before next iteration.
-      if (pauseBetween > 0) {
-        await new Promise((resolve) => setTimeout(resolve, pauseBetween));
-      }
     }
 
     throw new Error(`clickUntil: condition not met after ${maxReps} repetitions`);

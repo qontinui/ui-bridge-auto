@@ -9,7 +9,7 @@
 import type { ElementQuery, QueryableElement, QueryResult } from '../core/element-query';
 import { findFirst } from '../core/element-query';
 import type { ActionType } from '../types/transition';
-import type { ActionRecord, ActionExecutionOptions } from '../types/action';
+import type { ActionRecord, ActionExecutionOptions, VerificationSpec } from '../types/action';
 import {
   createActionRecord,
   markExecuting,
@@ -205,6 +205,11 @@ export class ActionExecutor {
         await this.delay(opts.pauseAfterAction);
       }
 
+      // Post-action verification.
+      if (opts.verification) {
+        await this.verifyPostAction(opts.verification);
+      }
+
       // Mark as completed and set "success" status for consumer compatibility.
       record.completedAt = Date.now();
       record.durationMs = record.completedAt - record.startedAt;
@@ -295,6 +300,37 @@ export class ActionExecutor {
     if (!options) return { ...this.defaultOptions };
     const { retry: _retry, ...rest } = options;
     return { ...this.defaultOptions, ...rest };
+  }
+
+  /**
+   * Verify a post-action condition by polling until met or timed out.
+   */
+  private async verifyPostAction(spec: VerificationSpec): Promise<void> {
+    const timeout = spec.timeout ?? 5000;
+    const interval = 100;
+    const started = Date.now();
+
+    while (Date.now() - started < timeout) {
+      const elements = this.config.registry.getAllElements();
+
+      if (spec.type === 'elementAppears' && spec.query) {
+        const found = findFirst(elements, spec.query);
+        if (found) return;
+      } else if (spec.type === 'elementVanishes' && spec.query) {
+        const found = findFirst(elements, spec.query);
+        if (!found) return;
+      } else if (spec.type === 'stateChange') {
+        // State change verification is handled by callers with state machine access.
+        // The executor doesn't have state machine context, so treat as immediately satisfied.
+        return;
+      }
+
+      await this.delay(interval);
+    }
+
+    throw new Error(
+      `Post-action verification "${spec.type}" timed out after ${timeout}ms`,
+    );
   }
 
   /**
