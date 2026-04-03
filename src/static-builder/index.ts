@@ -52,6 +52,10 @@ export {
 export type { TracedHandler, TracedCall } from "./extraction/handler-tracer";
 export { traceHandlers } from "./extraction/handler-tracer";
 export type { TracedTransition } from "./extraction/navigation-tracer";
+export type { PageMetadata } from "./extraction/page-metadata-extractor";
+export { extractPageMetadata, extractAllPageMetadata } from "./extraction/page-metadata-extractor";
+export type { LoadedSpec } from "./extraction/spec-loader";
+export { loadSpecs, loadSpecsSync, specElementsByState } from "./extraction/spec-loader";
 export {
   traceNavigationTransitions,
   traceNavigationInRoots,

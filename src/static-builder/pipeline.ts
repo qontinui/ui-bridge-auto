@@ -49,6 +49,15 @@ import type {
   AIConfig,
   AIEnhancementResult,
 } from "./enhancement/ai-types";
+import {
+  extractAllPageMetadata,
+  type PageMetadata,
+} from "./extraction/page-metadata-extractor";
+import {
+  loadSpecsSync,
+  specElementsByState,
+  type LoadedSpec,
+} from "./extraction/spec-loader";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -285,13 +294,105 @@ export function buildStateMachine(config: BuilderConfig): BuildResult {
     });
   }
 
+  // Stage 7c: Extract page metadata from PageRegistration components.
+  // Provides AI-readable page names and descriptions directly from the source.
+  const routeFileParsedForMeta = parseComponent(routeFile, resolved.routeFunction);
+  const pageMetadata = new Map<string, PageMetadata>();
+  if (routeFileParsedForMeta) {
+    for (const root of routeFileParsedForMeta.jsxRoots) {
+      const meta = extractAllPageMetadata(root);
+      for (const [id, m] of meta) {
+        pageMetadata.set(id, m);
+      }
+    }
+  }
+
+  // Stage 7d: Load spec files for authoritative element data.
+  // Spec files (.spec.uibridge.json) contain per-page element assertions
+  // that augment what static analysis can extract from source code.
+  let specElements = new Map<string, ElementQuery[]>();
+  if (resolved.specsDir) {
+    try {
+      const specsDirPath = `${config.projectRoot}/${resolved.specsDir}`.replace(
+        /\\/g,
+        "/",
+      );
+      // ts-morph already requires Node.js, so we use its fs access.
+      // Read spec files through the ts-morph project's file system.
+      const fileSystem = project.getFileSystem();
+      const specs = loadSpecsSync(
+        specsDirPath,
+        (path: string) => fileSystem.readFileSync(path, "utf-8"),
+        (dir: string) =>
+          fileSystem.readDirSync(dir).map((entry) => {
+            const name = typeof entry === "string" ? entry : entry.name;
+            // ts-morph may return full paths — extract just the filename
+            const parts = name.replace(/\\/g, "/").split("/");
+            return parts[parts.length - 1];
+          }),
+      );
+      specElements = specElementsByState(specs, stateId);
+    } catch (e) {
+      // Specs not available — continue without them.
+      // Store error for diagnostics.
+      uncertain.push({
+        type: "unknown-component",
+        sourceFile: "specs",
+        line: 0,
+        description: `Failed to load specs: ${e instanceof Error ? e.message : String(e)}`,
+      });
+    }
+  }
+
+  // Merge spec elements into route elements
+  for (const [sid, elements] of specElements) {
+    const routeId = sid.replace(/^tab-/, "");
+    const existing = routeElements.get(routeId) ?? [];
+    // Add spec elements that aren't already present
+    const existingKeys = new Set(existing.map((e) => JSON.stringify(e.query)));
+    for (const el of elements) {
+      if (!existingKeys.has(JSON.stringify(el))) {
+        existing.push({
+          query: el,
+          interactive: false,
+          tagName: "spec",
+          line: 0,
+        });
+      }
+    }
+    routeElements.set(routeId, existing);
+  }
+
+  // Stage 7e: Add data-page-id convention elements.
+  // Each state gets a requiredElement for its data-page-id attribute.
+  // Apps should add data-page-id="route-id" to their page root containers
+  // for definitive state detection.
+  for (const route of routes) {
+    const primaryId = route.caseValues[0];
+    const existing = routeElements.get(primaryId) ?? [];
+    existing.push({
+      query: { attributes: { "data-page-id": primaryId } },
+      interactive: false,
+      tagName: "div",
+      line: 0,
+    });
+    routeElements.set(primaryId, existing);
+  }
+
   // Stage 8: Generate state definitions
+  // Use page metadata for names when available.
+  const routeNameOverrides = new Map<string, string>();
+  for (const [id, meta] of pageMetadata) {
+    routeNameOverrides.set(id, meta.name);
+  }
+
   const states = generateStates({
     routes,
     routeElements,
     globalElements: globalLayout?.globalElements ?? [],
     routeBranches,
     appBranches: globalLayout?.appBranches ?? [],
+    routeNameOverrides,
   });
 
   // Build source file → state mapping for transition generation
@@ -437,3 +538,4 @@ function applyAIEnhancements(
     uncertain: aiResult.unresolved,
   };
 }
+

@@ -53,6 +53,8 @@ export interface StateGeneratorInput {
   appBranches: AppBranch[];
   /** Navigation group mapping (route ID -> group name). */
   routeGroups?: Map<string, string>;
+  /** Route ID -> page name overrides (from PageRegistration props). */
+  routeNameOverrides?: Map<string, string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,10 +85,13 @@ export function generateStates(input: StateGeneratorInput): StateDefinition[] {
 
     // Get the primary component name for AI-readable naming.
     // Skip metadata/wrapper components and prefer the actual page component.
+    // Use PageRegistration name if available (most accurate),
+    // otherwise infer from component name, skipping wrapper components.
+    const overrideName = input.routeNameOverrides?.get(primaryId);
     const componentName =
       route.componentNames.find((n) => !SKIP_FOR_NAMING.has(n)) ??
       route.componentNames[0];
-    const name = stateName(primaryId, componentName);
+    const name = overrideName ?? stateName(primaryId, componentName);
 
     // Select landmark elements for state detection (not all elements)
     const landmarkQueries = selectLandmarks(routeElems);

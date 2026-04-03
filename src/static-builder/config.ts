@@ -68,6 +68,14 @@ export interface BuilderConfig {
    */
   maxComponentDepth?: number;
 
+  /**
+   * Path to the specs directory containing .spec.uibridge.json files,
+   * relative to projectRoot. Specs provide authoritative element data
+   * for each page, augmenting what static analysis can extract.
+   * @example "src/specs"
+   */
+  specsDir?: string;
+
   /** AI enhancement configuration (optional, disabled by default). */
   ai?: {
     /** Enable AI enhancement for uncertain items. */
@@ -104,5 +112,6 @@ export function resolveConfig(
     tsconfigPath: config.tsconfigPath ?? DEFAULT_TSCONFIG_PATH,
     maxComponentDepth: config.maxComponentDepth ?? DEFAULT_MAX_COMPONENT_DEPTH,
     navigationEvents: config.navigationEvents ?? [],
+    specsDir: config.specsDir,
   };
 }
