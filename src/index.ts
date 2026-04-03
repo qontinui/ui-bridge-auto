@@ -4,6 +4,141 @@
  * Public API re-exports for all subsystems.
  */
 
+// Types — element model
+export type {
+  AutomationElement,
+  ElementState,
+  ElementRect,
+  ComputedStyleSubset,
+  ElementSnapshot,
+  ElementType,
+} from "./types/element";
+export {
+  ELEMENT_TYPES,
+  isElementType,
+  isAutomationElement,
+  isElementState,
+  isElementRect,
+  isElementSnapshot,
+} from "./types/element";
+
+// Types — state machine
+export type {
+  State,
+  StateCondition,
+  StateConditionProperty,
+  StateConditionComparator,
+  ActiveStateSet,
+  StateLifecycle,
+  StateChangeEvent,
+} from "./types/state";
+export {
+  createEmptyStateSet,
+  diffStateSets,
+  getStateLifecycle,
+  evaluateCondition,
+} from "./types/state";
+
+// Types — transitions
+export type {
+  Transition,
+  TransitionAction as TransitionActionDef,
+  ActionType,
+  WaitSpec as TransitionWaitSpec,
+  WaitType,
+  TransitionResult,
+} from "./types/transition";
+export {
+  transitionSuccessRate,
+  recordTransitionExecution,
+} from "./types/transition";
+
+// Types — action records
+export type {
+  ActionRecord,
+  ActionStatus,
+  ActionExecutionOptions,
+} from "./types/action";
+export {
+  createActionRecord,
+  markExecuting,
+  markCompleted,
+  markFailed,
+  markCancelled,
+  markSkipped,
+  isTerminalStatus,
+  createDefaultExecutionOptions,
+} from "./types/action";
+
+// Types — match results
+export type {
+  ElementCriteria,
+  MatchResult,
+  MultiMatchResult,
+  QueryExplanation,
+  CriteriaResult,
+} from "./types/match";
+export {
+  noMatch,
+  matched,
+  explainMatch,
+} from "./types/match";
+
+// Types — regions and spatial
+export type {
+  ViewportRegion,
+  NormalizedRegion,
+  SpatialRelation,
+  SpatialQuery,
+} from "./types/region";
+export {
+  isInside,
+  overlaps,
+  distance,
+  spatialRelation,
+  normalizeRegion,
+} from "./types/region";
+
+// Config — workflow
+export type {
+  WorkflowConfig,
+  WorkflowSettings,
+  StateConfig,
+  TransitionConfig,
+} from "./config/workflow";
+export {
+  createDefaultSettings,
+  mergeSettings,
+  hydrateState,
+  hydrateTransition,
+} from "./config/workflow";
+
+// Config — action defaults
+export type {
+  ClickConfig,
+  TypeConfig,
+  SelectConfig,
+  WaitConfig,
+  ScrollIntoViewConfig,
+  ActionDefaults,
+} from "./config/action-config";
+export {
+  createDefaultActionConfig,
+  mergeClickConfig,
+  mergeTypeConfig,
+  mergeSelectConfig,
+  mergeWaitConfig,
+  mergeActionDefaults,
+} from "./config/action-config";
+
+// Config — search
+export type { SearchConfig } from "./config/search-config";
+export {
+  createDefaultSearchConfig,
+  mergeSearchConfig,
+  validateSearchConfig,
+} from "./config/search-config";
+
 // Core
 export {
   type ElementQuery,

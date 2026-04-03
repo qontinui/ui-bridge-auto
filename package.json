@@ -25,6 +25,8 @@
     "@qontinui/ui-bridge": "file:../ui-bridge/packages/ui-bridge"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.2",
+    "jsdom": "^29.0.1",
     "tsup": "^8.0.0",
     "typescript": "^5.3.0",
     "vitest": "^4.1.0"
