@@ -351,3 +351,42 @@ export {
 
 // Server
 export { createAutoHandlers } from "./server/endpoints";
+
+// Recording & replay
+export {
+  SessionRecorder,
+  type RecordedEvent,
+  type RecordedAction as SessionRecordedAction,
+  type RecordedStateChange,
+  type RecordedElementEvent,
+  type RecordedSnapshot,
+  type RecordingSession,
+  ReplayEngine,
+  type ReplayOptions,
+  type ReplayResult,
+  RecordingPipeline,
+  PlaybookGenerator,
+  type Playbook,
+  type PlaybookStep,
+} from "./recording";
+
+// Error recovery & self-healing
+export {
+  classifyError,
+  addClassificationRule,
+  resetClassificationRules,
+  type ErrorClass,
+  type ClassifiedError,
+  ElementRelocator,
+  type AlternativeMatch,
+  StateRecovery,
+  applyStrategy,
+  selectStrategy,
+  retryStrategy,
+  fallbackStrategy,
+  waitStrategy,
+  type StrategyType,
+  type RecoveryStrategy,
+  type StrategyResult,
+  type StrategyContext,
+} from "./healing";
