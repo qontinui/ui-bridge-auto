@@ -102,11 +102,29 @@ export interface BuilderConfig {
 const DEFAULT_TSCONFIG_PATH = "tsconfig.json";
 const DEFAULT_MAX_COMPONENT_DEPTH = 5;
 
-/** Fill in defaults for optional config fields. */
+/** Fill in defaults for optional config fields. Validates required fields. */
 export function resolveConfig(
   config: BuilderConfig,
 ): Required<Pick<BuilderConfig, "tsconfigPath" | "maxComponentDepth">> &
   BuilderConfig {
+  if (!config.projectRoot) {
+    throw new Error("BuilderConfig.projectRoot is required");
+  }
+  if (!config.routeFile) {
+    throw new Error("BuilderConfig.routeFile is required");
+  }
+  if (!config.routeFunction) {
+    throw new Error("BuilderConfig.routeFunction is required");
+  }
+  if (!config.routeDiscriminant) {
+    throw new Error("BuilderConfig.routeDiscriminant is required");
+  }
+  if (!config.navigationFunctions || config.navigationFunctions.length === 0) {
+    throw new Error(
+      "BuilderConfig.navigationFunctions must contain at least one function name",
+    );
+  }
+
   return {
     ...config,
     tsconfigPath: config.tsconfigPath ?? DEFAULT_TSCONFIG_PATH,

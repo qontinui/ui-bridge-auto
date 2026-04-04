@@ -135,14 +135,56 @@ export function buildStateMachine(config: BuilderConfig): BuildResult {
   const uncertain: UncertainItem[] = [];
 
   // Stage 1: Load project
-  const { project, routeFile, appShellFile } = loadProject(config);
+  let project: ReturnType<typeof loadProject>["project"];
+  let routeFile: ReturnType<typeof loadProject>["routeFile"];
+  let appShellFile: ReturnType<typeof loadProject>["appShellFile"];
+  try {
+    ({ project, routeFile, appShellFile } = loadProject(config));
+  } catch (e) {
+    uncertain.push({
+      type: "unknown-component",
+      sourceFile: config.routeFile,
+      line: 0,
+      description: `Failed to load project: ${e instanceof Error ? e.message : String(e)}`,
+    });
+    return {
+      states: [],
+      transitions: [],
+      routes: [],
+      routeElements: new Map(),
+      globalElements: [],
+      routeBranches: new Map(),
+      tracedTransitions: [],
+      uncertain,
+    };
+  }
 
   // Stage 2: Extract routes
-  const routes = extractRoutes(
-    routeFile,
-    resolved.routeFunction,
-    resolved.routeDiscriminant,
-  );
+  let routes: RouteEntry[];
+  try {
+    routes = extractRoutes(
+      routeFile,
+      resolved.routeFunction,
+      resolved.routeDiscriminant,
+    );
+  } catch (e) {
+    uncertain.push({
+      type: "unknown-component",
+      sourceFile: routeFile.getFilePath(),
+      line: 0,
+      description: `Failed to extract routes: ${e instanceof Error ? e.message : String(e)}`,
+    });
+    return {
+      states: [],
+      transitions: [],
+      routes: [],
+      routeElements: new Map(),
+      globalElements: [],
+      routeBranches: new Map(),
+      tracedTransitions: [],
+      uncertain,
+    };
+  }
 
   // Stage 3: Resolve component trees for each route
   const resolvedComponents = new Map<string, ResolvedComponent[]>();
@@ -334,10 +376,10 @@ export function buildStateMachine(config: BuilderConfig): BuildResult {
       specElements = specElementsByState(specs, stateId);
     } catch (e) {
       // Specs not available — continue without them.
-      // Store error for diagnostics.
+      // Store error as a complex-condition uncertainty (infrastructure issue, not a missing component).
       uncertain.push({
-        type: "unknown-component",
-        sourceFile: "specs",
+        type: "complex-condition",
+        sourceFile: resolved.specsDir ?? "specs",
         line: 0,
         description: `Failed to load specs: ${e instanceof Error ? e.message : String(e)}`,
       });
