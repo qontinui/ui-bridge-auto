@@ -1,15 +1,18 @@
 /**
- * State generator — combines route elements, global elements, and branch
- * variants into StateDefinition[] for the AutomationEngine.
+ * State generator — uses co-occurrence analysis to produce StateDefinition[]
+ * with non-overlapping elements.
  *
- * Each route becomes a state. Branch variants within a route create
- * additional sub-states. App-level early returns (login, loading) create
- * blocking states.
+ * In model-based GUI automation, each element belongs to exactly ONE state.
+ * Multiple states are active simultaneously on any screen. States are
+ * discovered by grouping elements that always appear together (identical
+ * presence signature across routes).
  *
- * Output requirements:
- * - requiredElements must be precise enough for StateDetector.evaluate()
- * - State names must be AI-readable for agent decision-making
- * - The set of states must cover all reachable UI configurations
+ * Example: if sidebar elements appear in ALL routes, they form one state.
+ * If dashboard elements appear only in the "active" route, they form
+ * another state. On the Active Dashboard screen, both states are active.
+ *
+ * For app-level branches (login, loading), blocking states are created
+ * with excludedElements for the main layout.
  */
 
 import type { StateDefinition } from "../../state/state-machine";
@@ -64,100 +67,184 @@ export interface StateGeneratorInput {
 /**
  * Generate StateDefinition[] from extracted route and element data.
  *
- * For each route:
- * 1. Create a base state with global + page elements as requiredElements
- * 2. If the route has branch variants, create sub-states for each variant
- *
- * For app-level branches (login, loading):
- * 3. Create blocking states with excludedElements for the main layout
+ * Uses co-occurrence grouping: elements are grouped by their presence
+ * signature (which routes they appear in). Elements with identical
+ * signatures form one state with non-overlapping requiredElements.
  */
 export function generateStates(input: StateGeneratorInput): StateDefinition[] {
   const states: StateDefinition[] = [];
 
   const globalQueries = input.globalElements.map((el) => el.query);
+  const routeIds = input.routes.map((r) => r.caseValues[0]);
 
-  // Generate states for each route
+  // Build route metadata for naming
+  const routeNameMap = new Map<string, string>();
   for (const route of input.routes) {
     const primaryId = route.caseValues[0];
-    const routeElems = input.routeElements.get(primaryId) ?? [];
-    const branches = input.routeBranches.get(primaryId);
-    const group = input.routeGroups?.get(primaryId);
-
-    // Get the primary component name for AI-readable naming.
-    // Skip metadata/wrapper components and prefer the actual page component.
-    // Use PageRegistration name if available (most accurate),
-    // otherwise infer from component name, skipping wrapper components.
     const overrideName = input.routeNameOverrides?.get(primaryId);
     const componentName =
       route.componentNames.find((n) => !SKIP_FOR_NAMING.has(n)) ??
       route.componentNames[0];
-    const name = overrideName ?? stateName(primaryId, componentName);
+    routeNameMap.set(primaryId, overrideName ?? stateName(primaryId, componentName));
+  }
 
-    // Select landmark elements for state detection (not all elements)
-    const landmarkQueries = selectLandmarks(routeElems);
+  // ---- Step 1: Build presence map ----
+  // For each element (keyed by serialized query), track which routes it appears in.
+  const presenceMap = new Map<string, { query: ElementQuery; routeIds: Set<string> }>();
 
-    // Base state
-    const baseState: StateDefinition = {
-      id: stateId(primaryId),
-      name,
-      requiredElements: [...globalQueries, ...landmarkQueries],
-      group,
-      pathCost: 1.0,
-    };
-
-    states.push(baseState);
-
-    // Branch variant sub-states
-    if (branches && branches.branchGroups.length > 0) {
-      for (const branchGroup of branches.branchGroups) {
-        for (const variant of branchGroup.variants) {
-          if (variant.elements.length === 0) continue; // skip empty (absent) variants
-
-          const variantQueries = variant.elements.map((el) => el.query);
-          const variantState: StateDefinition = {
-            id: branchStateId(primaryId, variant.conditionLabel),
-            name: `${name} (${formatConditionLabel(variant.conditionLabel)})`,
-            requiredElements: [
-              ...globalQueries,
-              ...landmarkQueries,
-              ...variantQueries,
-            ],
-            group,
-            pathCost: 1.5, // slightly higher cost — prefer base state in pathfinding
-          };
-
-          states.push(variantState);
-        }
-      }
-    }
-
-    // Register alias state IDs for fall-through cases
-    for (let i = 1; i < route.caseValues.length; i++) {
-      const aliasId = route.caseValues[i];
-      const aliasState: StateDefinition = {
-        id: stateId(aliasId),
-        name: `${name} (${routeIdToWords(aliasId)})`,
-        requiredElements: baseState.requiredElements,
-        group,
-        pathCost: 1.0,
-      };
-      states.push(aliasState);
+  // Global elements appear in ALL routes
+  for (const q of globalQueries) {
+    const key = JSON.stringify(q);
+    if (!presenceMap.has(key)) {
+      presenceMap.set(key, { query: q, routeIds: new Set(routeIds) });
     }
   }
 
-  // Generate app-level blocking states
+  // Route-specific elements appear in their route
+  for (const route of input.routes) {
+    const routeId = route.caseValues[0];
+    const routeElems = input.routeElements.get(routeId) ?? [];
+    const landmarks = selectLandmarks(routeElems);
+    for (const q of landmarks) {
+      const key = JSON.stringify(q);
+      const existing = presenceMap.get(key);
+      if (existing) {
+        existing.routeIds.add(routeId);
+      } else {
+        presenceMap.set(key, { query: q, routeIds: new Set([routeId]) });
+      }
+    }
+  }
+
+  // ---- Step 2: Group by presence signature ----
+  // Elements appearing in the exact same set of routes form one state.
+  const signatureGroups = new Map<string, ElementQuery[]>();
+  for (const { query, routeIds } of presenceMap.values()) {
+    const sig = [...routeIds].sort().join("|");
+    const group = signatureGroups.get(sig);
+    if (group) {
+      group.push(query);
+    } else {
+      signatureGroups.set(sig, [query]);
+    }
+  }
+
+  // ---- Step 3: Create states from groups ----
+  for (const [sig, queries] of signatureGroups) {
+    if (queries.length === 0) continue;
+
+    const sigRoutes = sig.split("|");
+    const isGlobal = sigRoutes.length === routeIds.length && routeIds.length > 1;
+    const isSingleRoute = sigRoutes.length === 1;
+
+    let id: string;
+    let name: string;
+    let group: string | undefined;
+    let pathCost: number;
+
+    if (isGlobal) {
+      // Elements present in ALL routes — persistent UI (sidebar, header, footer)
+      id = "global-layout";
+      name = "Global Navigation";
+      group = "global";
+      pathCost = 0;
+    } else if (isSingleRoute) {
+      // Elements unique to one route — the page content state
+      const routeId = sigRoutes[0];
+      id = stateId(routeId);
+      name = routeNameMap.get(routeId) ?? routeIdToWords(routeId);
+      group = input.routeGroups?.get(routeId);
+      pathCost = 1.0;
+    } else {
+      // Elements shared by a subset of routes — e.g., a shared panel
+      const routeNames = sigRoutes
+        .map((r) => routeNameMap.get(r) ?? r)
+        .slice(0, 3)
+        .join(", ");
+      id = `shared-${sigRoutes.join("-").slice(0, 40)}`;
+      name = `Shared (${routeNames}${sigRoutes.length > 3 ? ", ..." : ""})`;
+      group = "shared";
+      pathCost = 0.5;
+    }
+
+    states.push({ id, name, requiredElements: queries, group, pathCost });
+  }
+
+  // Ensure every route has a state, even if no elements were extracted.
+  // This preserves naming, transitions, and alias support for empty routes.
+  const existingRouteStateIds = new Set(states.map((s) => s.id));
+  for (const route of input.routes) {
+    const routeId = route.caseValues[0];
+    const sid = stateId(routeId);
+    if (!existingRouteStateIds.has(sid)) {
+      states.push({
+        id: sid,
+        name: routeNameMap.get(routeId) ?? routeIdToWords(routeId),
+        requiredElements: [],
+        group: input.routeGroups?.get(routeId),
+        pathCost: 1.0,
+      });
+    }
+  }
+
+  // ---- Step 4: Branch variant sub-states ----
+  // Variant elements are page-specific and belong to their own states.
+  for (const route of input.routes) {
+    const primaryId = route.caseValues[0];
+    const branches = input.routeBranches.get(primaryId);
+    const routeName = routeNameMap.get(primaryId) ?? primaryId;
+    const group = input.routeGroups?.get(primaryId);
+
+    if (branches && branches.branchGroups.length > 0) {
+      for (const branchGroup of branches.branchGroups) {
+        for (const variant of branchGroup.variants) {
+          if (variant.elements.length === 0) continue;
+
+          const variantQueries = variant.elements.map((el) => el.query);
+          states.push({
+            id: branchStateId(primaryId, variant.conditionLabel),
+            name: `${routeName} (${formatConditionLabel(variant.conditionLabel)})`,
+            requiredElements: variantQueries,
+            group,
+            pathCost: 1.5,
+          });
+        }
+      }
+    }
+  }
+
+  // ---- Step 5: Alias states for fall-through cases ----
+  for (const route of input.routes) {
+    if (route.caseValues.length <= 1) continue;
+    const primaryId = route.caseValues[0];
+    const primaryState = states.find((s) => s.id === stateId(primaryId));
+    if (!primaryState) continue;
+
+    for (let i = 1; i < route.caseValues.length; i++) {
+      const aliasId = route.caseValues[i];
+      const routeName = routeNameMap.get(primaryId) ?? primaryId;
+      states.push({
+        id: stateId(aliasId),
+        name: `${routeName} (${routeIdToWords(aliasId)})`,
+        requiredElements: primaryState.requiredElements,
+        group: primaryState.group,
+        pathCost: 1.0,
+      });
+    }
+  }
+
+  // ---- Step 6: App-level blocking states ----
   for (const appBranch of input.appBranches) {
     const appQueries = appBranch.elements.map((el) => el.query);
-    const appState: StateDefinition = {
+    states.push({
       id: appStateId(appBranch.label),
       name: formatAppStateName(appBranch.label),
       requiredElements: appQueries,
       excludedElements: globalQueries.length > 0 ? globalQueries : undefined,
       blocking: appBranch.blocking,
       group: "app",
-      pathCost: 10.0, // high cost — pathfinder should avoid routing through app states
-    };
-    states.push(appState);
+      pathCost: 10.0,
+    });
   }
 
   return states;

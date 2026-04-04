@@ -21,7 +21,7 @@ function makeRoute(id: string, componentName: string): RouteEntry {
 }
 
 describe("generateStates", () => {
-  it("generates a state per route with global + page elements", () => {
+  it("separates global and route elements into non-overlapping states", () => {
     const states = generateStates({
       routes: [
         makeRoute("home", "HomePage"),
@@ -36,22 +36,40 @@ describe("generateStates", () => {
       appBranches: [],
     });
 
-    expect(states.length).toBe(2);
+    // 3 states: global + home + settings (elements are non-overlapping)
+    expect(states.length).toBe(3);
+
+    const globalState = states.find((s) => s.id === "global-layout");
+    expect(globalState).toBeDefined();
+    expect(globalState!.requiredElements).toHaveLength(1);
+    expect(globalState!.requiredElements[0].role).toBe("navigation");
 
     const home = states.find((s) => s.id === "tab-home");
     expect(home).toBeDefined();
     expect(home!.name).toBe("Home");
-    // Should have global nav + page-specific elements
-    expect(home!.requiredElements.some((e) => e.role === "navigation")).toBe(
-      true,
-    );
     expect(home!.requiredElements.some((e) => e.role === "main")).toBe(true);
+    // Global elements NOT in route state
+    expect(home!.requiredElements.some((e) => e.role === "navigation")).toBe(false);
 
     const settings = states.find((s) => s.id === "tab-settings");
     expect(settings).toBeDefined();
-    expect(settings!.requiredElements.some((e) => e.role === "form")).toBe(
-      true,
-    );
+    expect(settings!.requiredElements.some((e) => e.role === "form")).toBe(true);
+    expect(settings!.requiredElements.some((e) => e.role === "navigation")).toBe(false);
+  });
+
+  it("generates no global state when there are no global elements", () => {
+    const states = generateStates({
+      routes: [makeRoute("active", "ActiveDashboardPage")],
+      routeElements: new Map([["active", [makeElement({ role: "main" })]]]),
+      globalElements: [],
+      routeBranches: new Map(),
+      appBranches: [],
+    });
+
+    expect(states.length).toBe(1);
+    expect(states[0].id).toBe("tab-active");
+    expect(states[0].name).toBe("Active Dashboard");
+    expect(states.find((s) => s.id === "global-layout")).toBeUndefined();
   });
 
   it("generates AI-readable names from component names", () => {
@@ -66,7 +84,7 @@ describe("generateStates", () => {
     expect(states[0].name).toBe("Active Dashboard");
   });
 
-  it("generates branch variant sub-states", () => {
+  it("generates branch variant sub-states with non-overlapping elements", () => {
     const enumeration: BranchEnumeration = {
       unconditionalElements: [],
       branchGroups: [
@@ -97,7 +115,10 @@ describe("generateStates", () => {
     expect(variant).toBeDefined();
     expect(variant!.id).toBe("tab-active--toolkit-open");
     expect(variant!.name).toContain("Toolkit Open");
-    expect(variant!.pathCost).toBe(1.5); // higher than base
+    expect(variant!.pathCost).toBe(1.5);
+    // Variant elements are separate from base state elements
+    expect(variant!.requiredElements.some((e) => e.role === "complementary")).toBe(true);
+    expect(variant!.requiredElements.some((e) => e.role === "main")).toBe(false);
   });
 
   it("generates app-level blocking states", () => {
@@ -115,13 +136,13 @@ describe("generateStates", () => {
       ],
     });
 
-    expect(states.length).toBe(1);
-    const login = states[0];
-    expect(login.id).toBe("app-login");
-    expect(login.name).toBe("Login Screen");
-    expect(login.blocking).toBe(true);
-    expect(login.excludedElements).toBeDefined();
-    expect(login.pathCost).toBe(10.0);
+    // Only the app-level state (no global state since there are no routes)
+    const login = states.find((s) => s.id === "app-login");
+    expect(login).toBeDefined();
+    expect(login!.name).toBe("Login Screen");
+    expect(login!.blocking).toBe(true);
+    expect(login!.excludedElements).toBeDefined();
+    expect(login!.pathCost).toBe(10.0);
   });
 
   it("generates alias states for fall-through cases", () => {
@@ -159,11 +180,11 @@ describe("generateStates", () => {
       routeGroups: new Map([["logs", "monitoring"]]),
     });
 
-    expect(states[0].group).toBe("monitoring");
+    const logsState = states.find((s) => s.id === "tab-logs");
+    expect(logsState!.group).toBe("monitoring");
   });
 
   it("caps landmark elements to avoid over-specification", () => {
-    // Create many elements
     const elements = Array.from({ length: 20 }, (_, i) =>
       makeElement({ role: `role-${i}` }),
     );
@@ -176,7 +197,61 @@ describe("generateStates", () => {
       appBranches: [],
     });
 
-    // Should not include all 20 — capped at MAX_LANDMARKS (8) + global
-    expect(states[0].requiredElements.length).toBeLessThanOrEqual(8);
+    const pageState = states.find((s) => s.id === "tab-page");
+    expect(pageState!.requiredElements.length).toBeLessThanOrEqual(8);
+  });
+
+  it("groups shared elements into their own state", () => {
+    // Element appears in home AND settings but NOT in terminal
+    const sharedElement = makeElement({ role: "aside" });
+    const states = generateStates({
+      routes: [
+        makeRoute("home", "HomePage"),
+        makeRoute("settings", "SettingsPage"),
+        makeRoute("terminal", "TerminalPage"),
+      ],
+      routeElements: new Map([
+        ["home", [makeElement({ role: "main" }), sharedElement]],
+        ["settings", [makeElement({ role: "form" }), sharedElement]],
+        ["terminal", [makeElement({ role: "log" })]],
+      ]),
+      globalElements: [],
+      routeBranches: new Map(),
+      appBranches: [],
+    });
+
+    // 3 route states + 1 shared state
+    const shared = states.find((s) => s.id.startsWith("shared-"));
+    expect(shared).toBeDefined();
+    expect(shared!.requiredElements.some((e) => e.role === "aside")).toBe(true);
+
+    // Route states don't contain the shared element
+    const home = states.find((s) => s.id === "tab-home");
+    expect(home!.requiredElements.some((e) => e.role === "aside")).toBe(false);
+  });
+
+  it("ensures no element appears in more than one state", () => {
+    const states = generateStates({
+      routes: [
+        makeRoute("home", "HomePage"),
+        makeRoute("settings", "SettingsPage"),
+      ],
+      routeElements: new Map([
+        ["home", [makeElement({ role: "main" })]],
+        ["settings", [makeElement({ role: "form" })]],
+      ]),
+      globalElements: [makeElement({ role: "navigation" })],
+      routeBranches: new Map(),
+      appBranches: [],
+    });
+
+    // Collect all elements across all states (excluding app states)
+    const allElements = states
+      .filter((s) => !s.id.startsWith("app-"))
+      .flatMap((s) => s.requiredElements.map((e) => JSON.stringify(e)));
+
+    // No duplicates — each element in exactly one state
+    const uniqueElements = new Set(allElements);
+    expect(allElements.length).toBe(uniqueElements.size);
   });
 });
