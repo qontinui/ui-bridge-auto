@@ -29,6 +29,9 @@ export {
   ScreenshotAssertionManager,
 } from "./screenshot-assertion";
 
+// Shared constants
+export { MEDIA_ELEMENT_TAGS } from "./types";
+
 // Shared types
 export type {
   HighlightOptions,

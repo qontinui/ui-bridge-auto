@@ -40,8 +40,8 @@ import type {
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Tags that are treated as media elements requiring OCR for text extraction. */
-const MEDIA_TAGS = new Set(["canvas", "img", "video", "svg"]);
+// Media element tags — imported from shared types.
+import { MEDIA_ELEMENT_TAGS } from "./types";
 
 /** Default assertion options. */
 const ASSERTION_DEFAULTS: Required<Omit<TextAssertionOptions, "ocrProvider">> & {
@@ -77,7 +77,7 @@ export interface TextExtractionResult {
  * extraction.
  */
 function isMediaElement(element: HTMLElement): boolean {
-  return MEDIA_TAGS.has(element.tagName.toLowerCase());
+  return MEDIA_ELEMENT_TAGS.has(element.tagName.toLowerCase());
 }
 
 // ---------------------------------------------------------------------------
@@ -179,7 +179,31 @@ export async function assertTextInElement(
   options?: TextAssertionOptions,
 ): Promise<TextAssertionResult> {
   const opts = { ...ASSERTION_DEFAULTS, ...options };
+  const deadline = opts.timeout > 0 ? Date.now() + opts.timeout : 0;
+  const pollInterval = 100;
 
+  // Retry loop: attempt at least once, retry until timeout if configured.
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const attempt = await attemptTextAssertion(query, expectedText, registry, opts);
+
+    // Return immediately on pass, or if no timeout configured.
+    if (attempt.pass || deadline === 0 || Date.now() >= deadline) {
+      return attempt;
+    }
+
+    // Wait before retrying.
+    await new Promise<void>((resolve) => setTimeout(resolve, pollInterval));
+  }
+}
+
+/** Single attempt of text assertion (no retry). */
+async function attemptTextAssertion(
+  query: ElementQuery,
+  expectedText: string,
+  registry: RegistryLike,
+  opts: Required<Omit<TextAssertionOptions, "ocrProvider">> & { ocrProvider: IOCRProvider | undefined },
+): Promise<TextAssertionResult> {
   // Find element
   const elements: QueryableElement[] = registry.getAllElements();
   const result = findFirst(elements, query);

@@ -351,4 +351,43 @@ describe("assertTextInElement", () => {
     expect(result.actualText).toBe("");
     expect(result.confidence).toBe(1.0);
   });
+
+  it("retries with timeout until text matches", async () => {
+    const registry = createMockRegistry([
+      { id: "loading-el", label: "loading", textContent: "Loading..." },
+    ]);
+
+    // After 150ms, change the element's text content
+    const elements = registry.getAllElements();
+    const el = elements[0].element;
+    setTimeout(() => {
+      el.textContent = "Done";
+    }, 150);
+
+    const result = await assertTextInElement(
+      { id: "loading-el" },
+      "Done",
+      registry,
+      { timeout: 2000 },
+    );
+
+    expect(result.pass).toBe(true);
+    expect(result.actualText).toBe("Done");
+  });
+
+  it("returns failure when timeout expires without match", async () => {
+    const registry = createMockRegistry([
+      { id: "stuck-el", label: "stuck", textContent: "Loading..." },
+    ]);
+
+    const result = await assertTextInElement(
+      { id: "stuck-el" },
+      "Done",
+      registry,
+      { timeout: 200 },
+    );
+
+    expect(result.pass).toBe(false);
+    expect(result.actualText).toBe("Loading...");
+  });
 });

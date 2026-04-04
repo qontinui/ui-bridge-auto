@@ -27,18 +27,16 @@ import {
   compareVisualRegression,
 } from "@qontinui/ui-bridge";
 import type { MediaSnapshotData, VisualRegressionResult } from "@qontinui/ui-bridge";
-import type {
-  BaselineStore,
-  ScreenshotAssertionOptions,
-  ScreenshotAssertionResult,
+import {
+  MEDIA_ELEMENT_TAGS,
+  type BaselineStore,
+  type ScreenshotAssertionOptions,
+  type ScreenshotAssertionResult,
 } from "./types";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-/** Tags that use captureMediaSnapshot instead of captureElementScreenshot. */
-const MEDIA_TAGS = new Set(["canvas", "img", "video", "svg"]);
 
 /** Default assertion options. */
 const DEFAULTS: Required<
@@ -119,7 +117,7 @@ async function captureElement(
   maxSize: number,
 ): Promise<MediaSnapshotData | null> {
   const tag = element.tagName.toLowerCase();
-  if (MEDIA_TAGS.has(tag)) {
+  if (MEDIA_ELEMENT_TAGS.has(tag)) {
     return captureMediaSnapshot(element, elementId, maxSize);
   }
   return captureElementScreenshot(element, elementId, { maxSize });

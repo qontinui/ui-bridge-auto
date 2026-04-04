@@ -19,6 +19,13 @@ export type {
 } from "@qontinui/ui-bridge";
 
 // ---------------------------------------------------------------------------
+// Shared constants
+// ---------------------------------------------------------------------------
+
+/** HTML tags treated as media elements requiring special capture (OCR, screenshots). */
+export const MEDIA_ELEMENT_TAGS = new Set(["canvas", "img", "video", "svg"]);
+
+// ---------------------------------------------------------------------------
 // Feature 1: Element Highlight
 // ---------------------------------------------------------------------------
 
