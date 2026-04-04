@@ -2,8 +2,9 @@
  * Global layout extractor — analyzes the app shell (e.g., App.tsx) to
  * identify elements that are always present regardless of the active route.
  *
- * These global elements are merged into every state's requiredElements
- * so the StateDetector correctly expects them in the live DOM.
+ * Traverses the full component tree (imported components, not just local
+ * ones) to find all rendered elements. Accuracy is more important than
+ * speed — the extractor follows as many component layers as needed.
  *
  * Also identifies app-level conditional branches (auth gate, loading screen)
  * that produce top-level blocking states.
@@ -11,12 +12,24 @@
 
 import {
   type SourceFile,
+  type Project,
   type Node,
   SyntaxKind,
   type ArrowFunction,
 } from "ts-morph";
-import { parseComponent, unwrapProviders } from "../parsing/component-parser";
-import { extractElements, type ExtractedElement } from "./element-extractor";
+import {
+  parseComponent,
+  unwrapProviders,
+} from "../parsing/component-parser";
+import {
+  resolveComponent,
+  type ResolvedComponent,
+} from "../parsing/import-resolver";
+import {
+  extractElements,
+  extractElementsFromRoots,
+  type ExtractedElement,
+} from "./element-extractor";
 import type { ElementQuery } from "../../core/element-query";
 
 // ---------------------------------------------------------------------------
@@ -48,17 +61,22 @@ export interface AppBranch {
 /**
  * Extract the global layout from an app shell file.
  *
- * Parses the main component, identifies elements that are rendered
- * unconditionally (outside the route-switched content area), and
- * identifies early-return branches as app-level states.
+ * Parses the main component and recursively traverses ALL child components
+ * (both local and imported) to find elements that are rendered unconditionally
+ * outside the route-switched content area.
  *
  * @param appShellFile - The app shell source file (e.g., App.tsx).
  * @param routeComponentName - The route switcher component name to exclude
  *   from global elements (e.g., "TabContent").
+ * @param project - The ts-morph project for resolving imports across files.
+ *   When provided, enables deep traversal of imported components.
+ * @param maxDepth - Maximum depth for resolving imported components (default 10).
  */
 export function extractGlobalLayout(
   appShellFile: SourceFile,
   routeComponentName: string,
+  project?: Project,
+  maxDepth?: number,
 ): GlobalLayout {
   // Parse the default/first exported component
   const parsed = parseComponent(appShellFile);
@@ -69,16 +87,18 @@ export function extractGlobalLayout(
   const globalElements: ExtractedElement[] = [];
   const appBranches: AppBranch[] = [];
   const visited = new Set<string>();
+  const resolveDepth = maxDepth ?? 10;
 
   // Recursively extract elements, unwrapping providers and following
-  // local component references within the same file.
+  // component references — both local (same file) and imported (cross-file).
   extractFromRoots(
     parsed.jsxRoots,
     appShellFile,
     routeComponentName,
     globalElements,
     visited,
-    5, // max recursion depth for following local components
+    resolveDepth,
+    project,
   );
 
   // Look for early returns that indicate app-level states
@@ -90,7 +110,7 @@ export function extractGlobalLayout(
 
 /**
  * Recursively extract elements from JSX roots, unwrapping providers
- * and following local component references in the same file.
+ * and following component references (local and imported).
  */
 function extractFromRoots(
   jsxRoots: Node[],
@@ -99,6 +119,7 @@ function extractFromRoots(
   result: ExtractedElement[],
   visited: Set<string>,
   depth: number,
+  project?: Project,
 ): void {
   if (depth <= 0) return;
 
@@ -113,74 +134,44 @@ function extractFromRoots(
       );
       result.push(...filtered);
 
-      // Check if any child JSX references a local (same-file) component.
-      // If so, follow it to extract its elements too.
-      followLocalComponents(
+      // Follow component references (local + imported)
+      followComponents(
         node,
         sourceFile,
         routeComponentName,
         result,
         visited,
         depth - 1,
+        project,
       );
     }
   }
 }
 
 /**
- * Find local component references in JSX and follow them.
- *
- * When the JSX contains `<AppContent />` and `AppContent` is defined
- * in the same file, parse that function and extract its elements.
+ * Find component references in JSX and follow them — both local (same file)
+ * and imported (cross-file via the ts-morph project).
  */
-function followLocalComponents(
+function followComponents(
   jsxNode: Node,
   sourceFile: SourceFile,
   routeComponentName: string,
   result: ExtractedElement[],
   visited: Set<string>,
   depth: number,
+  project?: Project,
 ): void {
   if (depth <= 0) return;
 
-  // Find all component references in this JSX node (including the node itself)
-  const componentNames = new Set<string>();
-
-  // Check the node itself if it's a component reference
-  if (jsxNode.getKind() === SyntaxKind.JsxSelfClosingElement) {
-    const tagName = (jsxNode as any).getTagNameNode().getText();
-    if (/^[A-Z]/.test(tagName) && !tagName.includes("."))
-      componentNames.add(tagName);
-  } else if (jsxNode.getKind() === SyntaxKind.JsxElement) {
-    const tagName = (jsxNode as any)
-      .getOpeningElement()
-      .getTagNameNode()
-      .getText();
-    if (/^[A-Z]/.test(tagName) && !tagName.includes("."))
-      componentNames.add(tagName);
-  }
-
-  // Check descendants
-  const selfClosing = jsxNode.getDescendantsOfKind(
-    SyntaxKind.JsxSelfClosingElement,
-  );
-  const opening = jsxNode.getDescendantsOfKind(SyntaxKind.JsxOpeningElement);
-  for (const el of selfClosing) {
-    const name = el.getTagNameNode().getText();
-    if (/^[A-Z]/.test(name) && !name.includes(".")) componentNames.add(name);
-  }
-  for (const el of opening) {
-    const name = el.getTagNameNode().getText();
-    if (/^[A-Z]/.test(name) && !name.includes(".")) componentNames.add(name);
-  }
+  // Collect all component names referenced in this JSX subtree
+  const componentNames = collectComponentNames(jsxNode);
 
   for (const name of componentNames) {
-    // Skip the route component and already-visited components
     if (name === routeComponentName) continue;
     if (visited.has(name)) continue;
     visited.add(name);
 
-    // Check if this component is defined in the same file (non-exported function)
+    // 1. Try local (same-file) component first
     const localFn = sourceFile.getFunction(name);
     if (localFn) {
       const localParsed = parseComponent(sourceFile, name);
@@ -192,10 +183,139 @@ function followLocalComponents(
           result,
           visited,
           depth,
+          project,
+        );
+      }
+      continue;
+    }
+
+    // Also check for arrow function components in the same file
+    const localArrow = findLocalArrowComponent(sourceFile, name);
+    if (localArrow) {
+      const localParsed = parseComponent(sourceFile, name);
+      if (localParsed && localParsed.jsxRoots.length > 0) {
+        extractFromRoots(
+          localParsed.jsxRoots,
+          sourceFile,
+          routeComponentName,
+          result,
+          visited,
+          depth,
+          project,
+        );
+      }
+      continue;
+    }
+
+    // 2. Try imported component (cross-file) via ts-morph project
+    if (project) {
+      const resolved = resolveComponent(
+        name,
+        sourceFile,
+        project,
+        depth,
+        0,
+        new Set(visited),
+      );
+      if (resolved) {
+        extractFromResolved(resolved, routeComponentName, result, visited, depth, project);
+      }
+    }
+  }
+}
+
+/**
+ * Extract elements from a resolved (imported) component and its children.
+ */
+function extractFromResolved(
+  component: ResolvedComponent,
+  routeComponentName: string,
+  result: ExtractedElement[],
+  visited: Set<string>,
+  depth: number,
+  project?: Project,
+): void {
+  const parsed = parseComponent(component.sourceFile, component.name);
+  if (parsed && parsed.jsxRoots.length > 0) {
+    // Extract elements directly from this component's JSX
+    const elements = extractElementsFromRoots(parsed.jsxRoots);
+    const filtered = elements.filter(
+      (el) => !isRouteComponent(el, routeComponentName),
+    );
+    result.push(...filtered);
+
+    // Follow children recursively
+    if (depth > 0) {
+      for (const root of parsed.jsxRoots) {
+        followComponents(
+          root,
+          component.sourceFile,
+          routeComponentName,
+          result,
+          visited,
+          depth - 1,
+          project,
         );
       }
     }
   }
+
+  // Also process resolved children
+  for (const child of component.children) {
+    if (visited.has(child.name)) continue;
+    visited.add(child.name);
+    extractFromResolved(child, routeComponentName, result, visited, depth - 1, project);
+  }
+}
+
+/**
+ * Collect all PascalCase component names from a JSX subtree.
+ */
+function collectComponentNames(jsxNode: Node): Set<string> {
+  const names = new Set<string>();
+
+  const addIfComponent = (tagText: string) => {
+    if (/^[A-Z]/.test(tagText) && !tagText.includes(".")) {
+      names.add(tagText);
+    }
+  };
+
+  // The node itself
+  if (jsxNode.getKind() === SyntaxKind.JsxSelfClosingElement) {
+    addIfComponent((jsxNode as any).getTagNameNode().getText());
+  } else if (jsxNode.getKind() === SyntaxKind.JsxElement) {
+    addIfComponent(
+      (jsxNode as any).getOpeningElement().getTagNameNode().getText(),
+    );
+  }
+
+  // Descendants
+  for (const el of jsxNode.getDescendantsOfKind(SyntaxKind.JsxSelfClosingElement)) {
+    addIfComponent(el.getTagNameNode().getText());
+  }
+  for (const el of jsxNode.getDescendantsOfKind(SyntaxKind.JsxOpeningElement)) {
+    addIfComponent(el.getTagNameNode().getText());
+  }
+
+  return names;
+}
+
+/**
+ * Find arrow function component declarations in a file.
+ */
+function findLocalArrowComponent(
+  sourceFile: SourceFile,
+  name: string,
+): boolean {
+  for (const stmt of sourceFile.getVariableStatements()) {
+    for (const decl of stmt.getDeclarations()) {
+      if (decl.getName() === name) {
+        const init = decl.getInitializer();
+        if (init?.getKind() === SyntaxKind.ArrowFunction) return true;
+      }
+    }
+  }
+  return false;
 }
 
 /**
@@ -204,8 +324,9 @@ function followLocalComponents(
 export function extractGlobalElementQueries(
   appShellFile: SourceFile,
   routeComponentName: string,
+  project?: Project,
 ): ElementQuery[] {
-  const layout = extractGlobalLayout(appShellFile, routeComponentName);
+  const layout = extractGlobalLayout(appShellFile, routeComponentName, project);
   return layout.globalElements.map((el) => el.query);
 }
 

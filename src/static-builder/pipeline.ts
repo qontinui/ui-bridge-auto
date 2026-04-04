@@ -255,7 +255,12 @@ export function buildStateMachine(config: BuilderConfig): BuildResult {
   // Stage 5: Extract global layout elements
   let globalLayout: GlobalLayout | undefined;
   if (appShellFile) {
-    globalLayout = extractGlobalLayout(appShellFile, resolved.routeFunction);
+    globalLayout = extractGlobalLayout(
+      appShellFile,
+      resolved.routeFunction,
+      project,
+      resolved.maxComponentDepth,
+    );
   }
 
   // Stage 6: Enumerate conditional branches per route
