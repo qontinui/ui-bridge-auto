@@ -144,7 +144,7 @@ describe("generateStates", () => {
     expect(login!.pathCost).toBe(10.0);
   });
 
-  it("generates alias states for fall-through cases", () => {
+  it("collapses fall-through cases into the primary state", () => {
     const states = generateStates({
       routes: [
         {
@@ -159,13 +159,9 @@ describe("generateStates", () => {
       appBranches: [],
     });
 
-    // Base + 2 aliases
-    expect(states.length).toBe(3);
-    expect(states.map((s) => s.id).sort()).toEqual([
-      "tab-settings",
-      "tab-settings-account",
-      "tab-settings-ai",
-    ]);
+    // Only the primary state — aliases are collapsed (same page, same elements)
+    expect(states.length).toBe(1);
+    expect(states[0].id).toBe("tab-settings");
   });
 
   it("assigns group from routeGroups", () => {

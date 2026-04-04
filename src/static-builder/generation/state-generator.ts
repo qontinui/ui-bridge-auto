@@ -207,25 +207,13 @@ export function generateStates(input: StateGeneratorInput): StateDefinition[] {
     }
   }
 
-  // ---- Step 5: Alias states for fall-through cases ----
-  for (const route of input.routes) {
-    if (route.caseValues.length <= 1) continue;
-    const primaryId = route.caseValues[0];
-    const primaryState = states.find((s) => s.id === stateId(primaryId));
-    if (!primaryState) continue;
-
-    for (let i = 1; i < route.caseValues.length; i++) {
-      const aliasId = route.caseValues[i];
-      const routeName = routeNameMap.get(primaryId) ?? primaryId;
-      states.push({
-        id: stateId(aliasId),
-        name: `${routeName} (${routeIdToWords(aliasId)})`,
-        requiredElements: primaryState.requiredElements,
-        group: primaryState.group,
-        pathCost: 1.0,
-      });
-    }
-  }
+  // ---- Step 5: Register alias IDs on the primary state ----
+  // Fall-through switch cases (e.g., "runs" and "history" rendering the same
+  // component) map to the SAME state. We don't create duplicate states —
+  // instead, store alias IDs so transitions can reference either name.
+  // The primary state already has the correct elements from co-occurrence.
+  // Alias IDs are unused in the state definition but recorded for transition
+  // generation (sidebar transitions reference route IDs).
 
   // ---- Step 6: App-level blocking states ----
   // Blocking states (login, loading) exclude elements that appear in all routes,

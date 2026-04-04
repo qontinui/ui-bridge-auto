@@ -86,11 +86,50 @@ export function extractGlobalLayout(
 
   const globalElements: ExtractedElement[] = [];
   const appBranches: AppBranch[] = [];
-  const visited = new Set<string>();
   const resolveDepth = maxDepth ?? 10;
 
+  // Identify early-return branches FIRST so we can exclude their components
+  // from global element extraction. Components rendered inside conditional
+  // branches (login, loading, setup) are NOT always-present.
+  const branches = extractEarlyReturnBranches(appShellFile);
+  appBranches.push(...branches);
+
+  // Collect component names from conditional branches to exclude from global traversal
+  const conditionalComponents = new Set<string>();
+  for (const branch of branches) {
+    for (const el of branch.elements) {
+      // If the element's tagName is a PascalCase component, exclude it
+      if (/^[A-Z]/.test(el.tagName)) {
+        conditionalComponents.add(el.tagName);
+      }
+    }
+  }
+
+  // Also collect component names directly from the early-return JSX
+  for (const body of getExportedFunctionBodies(appShellFile)) {
+    const ifStatements = body
+      .getDescendantsOfKind(SyntaxKind.IfStatement)
+      .filter((ifStmt) => {
+        let parent: Node | undefined = ifStmt.getParent();
+        while (parent !== undefined && parent !== body) {
+          if (parent.getKind() === SyntaxKind.IfStatement) return false;
+          parent = parent.getParent();
+        }
+        return parent === body;
+      });
+    for (const ifStmt of ifStatements) {
+      const thenStmt = ifStmt.getThenStatement();
+      const names = collectComponentNames(thenStmt);
+      for (const name of names) conditionalComponents.add(name);
+    }
+  }
+
   // Recursively extract elements, unwrapping providers and following
-  // component references — both local (same file) and imported (cross-file).
+  // component references — excluding components from conditional branches.
+  const visited = new Set<string>(conditionalComponents);
+  // Also always exclude the route component
+  visited.add(routeComponentName);
+
   extractFromRoots(
     parsed.jsxRoots,
     appShellFile,
@@ -100,10 +139,6 @@ export function extractGlobalLayout(
     resolveDepth,
     project,
   );
-
-  // Look for early returns that indicate app-level states
-  const branches = extractEarlyReturnBranches(appShellFile);
-  appBranches.push(...branches);
 
   return { globalElements, appBranches };
 }
@@ -345,26 +380,15 @@ function isRouteComponent(
 }
 
 /**
- * Extract early-return conditional branches from a component.
- *
- * Looks for patterns like:
- *   if (loading) return <Spinner />;
- *   if (!authenticated) return <LoginScreen />;
- *
- * These become app-level blocking states.
+ * Get function bodies from exported functions in a source file.
  */
-function extractEarlyReturnBranches(sourceFile: SourceFile): AppBranch[] {
-  const branches: AppBranch[] = [];
-
-  // Collect function bodies from both function declarations and arrow functions
+function getExportedFunctionBodies(sourceFile: SourceFile): Node[] {
   const bodies: Node[] = [];
-
   for (const fn of sourceFile.getFunctions()) {
     if (!fn.isExported()) continue;
     const body = fn.getBody();
     if (body) bodies.push(body);
   }
-
   for (const varStmt of sourceFile.getVariableStatements()) {
     if (!varStmt.isExported()) continue;
     for (const decl of varStmt.getDeclarations()) {
@@ -375,6 +399,21 @@ function extractEarlyReturnBranches(sourceFile: SourceFile): AppBranch[] {
       }
     }
   }
+  return bodies;
+}
+
+/**
+ * Extract early-return conditional branches from a component.
+ *
+ * Looks for patterns like:
+ *   if (loading) return <Spinner />;
+ *   if (!authenticated) return <LoginScreen />;
+ *
+ * These become app-level blocking states.
+ */
+function extractEarlyReturnBranches(sourceFile: SourceFile): AppBranch[] {
+  const branches: AppBranch[] = [];
+  const bodies = getExportedFunctionBodies(sourceFile);
 
   for (const body of bodies) {
     // Use getDescendantsOfKind since Block wraps statements in a SyntaxList
