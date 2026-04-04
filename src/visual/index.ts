@@ -27,6 +27,7 @@ export {
 export {
   InMemoryBaselineStore,
   ScreenshotAssertionManager,
+  applyMask,
 } from "./screenshot-assertion";
 
 // Tesseract.js OCR provider

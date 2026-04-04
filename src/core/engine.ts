@@ -57,6 +57,7 @@ import type {
 } from "../execution/graph-executor";
 import { GraphExecutor } from "../execution/graph-executor";
 import { ElementHighlightManager } from "../visual/element-highlight";
+import type { IOCRProvider } from "../visual/types";
 import type { ActionType } from "../types/transition";
 
 // ---------------------------------------------------------------------------
@@ -79,6 +80,10 @@ export interface EngineConfig {
   enableHighlights?: boolean;
   /** Custom highlight manager. Auto-created when enableHighlights is true and this is omitted. */
   highlightManager?: ElementHighlightManager;
+  /** Enable OCR auto-detection via Tesseract.js (default false). */
+  enableOCR?: boolean;
+  /** Custom OCR provider. When enableOCR is true and this is omitted, TesseractOCRProvider is auto-detected. */
+  ocrProvider?: IOCRProvider;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +112,9 @@ export class AutomationEngine {
   private readonly enableHighlights: boolean;
   /** Highlight manager for visual feedback during automation. */
   readonly highlightManager: ElementHighlightManager | null;
+  /** OCR provider for text extraction from media elements. */
+  private ocrProvider: IOCRProvider | null;
+  private ocrAutoDetectPromise: Promise<void> | null = null;
 
   constructor(config: EngineConfig) {
     this.registry = config.registry;
@@ -126,6 +134,40 @@ export class AutomationEngine {
     this.highlightManager = this.enableHighlights
       ? config.highlightManager ?? new ElementHighlightManager()
       : config.highlightManager ?? null;
+    this.ocrProvider = config.ocrProvider ?? null;
+    if (config.enableOCR && !this.ocrProvider) {
+      this.ocrAutoDetectPromise = this.autoDetectOCR();
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // OCR auto-detection
+  // -----------------------------------------------------------------------
+
+  /**
+   * Attempt to auto-detect and initialize a TesseractOCRProvider.
+   * Fails silently if tesseract.js is not installed.
+   */
+  private async autoDetectOCR(): Promise<void> {
+    try {
+      const { TesseractOCRProvider } = await import("../visual/tesseract-provider");
+      this.ocrProvider = new TesseractOCRProvider();
+    } catch {
+      // tesseract.js not installed — OCR remains unavailable
+    }
+  }
+
+  /**
+   * Get the OCR provider, awaiting auto-detection if it's still in progress.
+   *
+   * @returns The OCR provider, or null if none is available.
+   */
+  async getOCRProvider(): Promise<IOCRProvider | null> {
+    if (this.ocrAutoDetectPromise) {
+      await this.ocrAutoDetectPromise;
+      this.ocrAutoDetectPromise = null;
+    }
+    return this.ocrProvider;
   }
 
   // -----------------------------------------------------------------------

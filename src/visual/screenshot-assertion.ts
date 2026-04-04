@@ -27,6 +27,7 @@ import {
   compareVisualRegression,
 } from "@qontinui/ui-bridge";
 import type { MediaSnapshotData, VisualRegressionResult } from "@qontinui/ui-bridge";
+import type { ViewportRegion } from "../types/region";
 import {
   MEDIA_ELEMENT_TAGS,
   type BaselineStore,
@@ -121,6 +122,63 @@ async function captureElement(
     return captureMediaSnapshot(element, elementId, maxSize);
   }
   return captureElementScreenshot(element, elementId, { maxSize });
+}
+
+// ---------------------------------------------------------------------------
+// Image masking
+// ---------------------------------------------------------------------------
+
+/**
+ * Load a base64-encoded PNG image into an HTMLImageElement.
+ */
+function loadBase64Image(base64: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = `data:image/png;base64,${base64}`;
+  });
+}
+
+/**
+ * Apply mask regions to a snapshot by drawing neutral gray rectangles
+ * over the specified areas. Returns a new snapshot with the masked image.
+ *
+ * Used to exclude dynamic content (timestamps, animations, ads) from
+ * visual regression comparison.
+ *
+ * @param snapshot - The snapshot to mask.
+ * @param regions - Viewport regions to blank out.
+ * @returns A new snapshot with mask regions filled with gray.
+ */
+export async function applyMask(
+  snapshot: MediaSnapshotData,
+  regions: ViewportRegion[],
+): Promise<MediaSnapshotData> {
+  if (regions.length === 0) return snapshot;
+
+  try {
+    const img = await loadBase64Image(snapshot.data);
+    const canvas = document.createElement("canvas");
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return snapshot;
+
+    ctx.drawImage(img, 0, 0);
+
+    // Blank out mask regions with neutral gray
+    ctx.fillStyle = "#808080";
+    for (const r of regions) {
+      ctx.fillRect(r.x, r.y, r.width, r.height);
+    }
+
+    const data = canvas.toDataURL("image/png").replace(/^data:image\/png;base64,/, "");
+    return { ...snapshot, data };
+  } catch {
+    // If masking fails (e.g., jsdom without canvas), return original
+    return snapshot;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -245,8 +303,13 @@ export class ScreenshotAssertionManager {
       };
     }
 
+    // Apply masks if specified
+    const masks = opts.maskRegions;
+    const maskedBaseline = masks && masks.length > 0 ? await applyMask(baseline, masks) : baseline;
+    const maskedCurrent = masks && masks.length > 0 ? await applyMask(current, masks) : current;
+
     // Compare
-    const vr = await compareVisualRegression(baseline, current, {
+    const vr = await compareVisualRegression(maskedBaseline, maskedCurrent, {
       pixelThreshold: opts.pixelThreshold,
       failureThreshold: opts.failureThreshold,
       failureThresholdType: opts.failureThresholdType,
@@ -322,7 +385,12 @@ export class ScreenshotAssertionManager {
   ): Promise<ScreenshotAssertionResult> {
     const opts = { ...DEFAULTS, ...options };
 
-    const vr = await compareVisualRegression(a, b, {
+    // Apply masks if specified
+    const masks = opts.maskRegions;
+    const maskedA = masks && masks.length > 0 ? await applyMask(a, masks) : a;
+    const maskedB = masks && masks.length > 0 ? await applyMask(b, masks) : b;
+
+    const vr = await compareVisualRegression(maskedA, maskedB, {
       pixelThreshold: opts.pixelThreshold,
       failureThreshold: opts.failureThreshold,
       failureThresholdType: opts.failureThresholdType,
