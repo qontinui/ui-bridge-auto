@@ -34,6 +34,7 @@ src/
 ├── wait/           # Wait primitives (element, state, idle, condition)
 ├── batch/          # Action sequences + named flows
 ├── discovery/      # Overlay detection, stable IDs, element fingerprinting
+├── visual/         # Highlights, OCR assertions, coordinates, screenshots
 ├── server/         # HTTP endpoint handlers
 ├── test-utils/     # Mock registry, elements, executor for testing
 └── __tests__/      # Test suites (vitest + jsdom)
@@ -68,6 +69,7 @@ This library is being built systematically in work units (WU):
 | WU-6 | Recording & Replay | Complete |
 | WU-7 | Error Recovery & Self-Healing | Complete |
 | WU-8 | Server, MCP, Runner Integration | Complete |
+| WU-9 | Visual (highlights, OCR, coordinates, screenshots) | Complete |
 
 ## Code Standards
 

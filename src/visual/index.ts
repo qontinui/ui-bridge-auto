@@ -29,6 +29,18 @@ export {
   ScreenshotAssertionManager,
 } from "./screenshot-assertion";
 
+// Tesseract.js OCR provider
+export {
+  TesseractOCRProvider,
+  type TesseractProviderOptions,
+} from "./tesseract-provider";
+
+// IndexedDB baseline store
+export {
+  IndexedDBBaselineStore,
+  type IndexedDBStoreOptions,
+} from "./indexed-db-store";
+
 // Shared constants
 export { MEDIA_ELEMENT_TAGS } from "./types";
 
