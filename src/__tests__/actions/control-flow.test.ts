@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { loop, tryCatch, switchCase, clickUntil } from "../../actions/control-flow";
+import { loop, tryCatch, switchCase, clickUntil, forEach, retryChain, priorityExecute } from "../../actions/control-flow";
 import { MockActionExecutor } from "../../test-utils/mock-executor";
 import { resetIdCounter } from "../../test-utils/mock-elements";
 import type { ChainStep } from "../../actions/action-chain";
@@ -195,5 +195,106 @@ describe("clickUntil", () => {
     // loop() runs 3 iterations, condition never met
     expect(executor.executedActions).toHaveLength(3);
     expect(ctx.variables._conditionMet).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// forEach
+// ---------------------------------------------------------------------------
+
+describe("forEach", () => {
+  it("iterates over collection executing steps for each item", async () => {
+    const steps: ChainStep[] = [
+      { type: "action", query: { text: "Item" }, action: "click" },
+    ];
+
+    const ctx = await forEach(executor, steps, ["a", "b", "c"], "item");
+
+    expect(executor.executedActions).toHaveLength(3);
+    // Iteration variables cleaned up
+    expect(ctx.variables.item).toBeUndefined();
+    expect(ctx.variables._index).toBeUndefined();
+  });
+
+  it("respects maxIterations", async () => {
+    const steps: ChainStep[] = [
+      { type: "action", query: { text: "Item" }, action: "click" },
+    ];
+
+    await forEach(executor, steps, [1, 2, 3, 4, 5], "n", { maxIterations: 2 });
+
+    expect(executor.executedActions).toHaveLength(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// retryChain
+// ---------------------------------------------------------------------------
+
+describe("retryChain", () => {
+  it("retries and succeeds on later attempt", async () => {
+    let attempts = 0;
+    const originalExec = executor.executeAction.bind(executor);
+    executor.executeAction = async (id, action, params) => {
+      attempts++;
+      if (attempts < 3) throw new Error("transient");
+      return originalExec(id, action, params);
+    };
+
+    const steps: ChainStep[] = [
+      { type: "action", query: { text: "Go" }, action: "click" },
+    ];
+
+    const ctx = await retryChain(executor, steps, { maxAttempts: 5, delayMs: 1 });
+
+    expect(ctx.errors).toHaveLength(0);
+    expect(attempts).toBe(3);
+  });
+
+  it("fails after all attempts", async () => {
+    executor.executeAction = async () => { throw new Error("always"); };
+
+    const steps: ChainStep[] = [
+      { type: "action", query: { text: "Fail" }, action: "click" },
+    ];
+
+    const ctx = await retryChain(executor, steps, { maxAttempts: 2, delayMs: 1 });
+
+    expect(ctx.errors).toHaveLength(1);
+    expect(ctx.errors[0].message).toContain("all 2 attempts failed");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// priorityExecute
+// ---------------------------------------------------------------------------
+
+describe("priorityExecute", () => {
+  it("uses first successful alternative", async () => {
+    const originalFind = executor.findElement.bind(executor);
+    executor.findElement = (query) => {
+      if (query.text === "Missing") return null;
+      return originalFind(query);
+    };
+
+    const ctx = await priorityExecute(executor, [
+      [{ type: "action", query: { text: "Missing" }, action: "click" }],
+      [{ type: "action", query: { text: "Ok" }, action: "click" }],
+    ]);
+
+    expect(ctx.errors).toHaveLength(0);
+    expect(executor.executedActions.length).toBeGreaterThan(0);
+  });
+
+  it("fails when all alternatives fail", async () => {
+    executor.findElement = () => null;
+
+    const ctx = await priorityExecute(executor, [
+      [{ type: "action", query: { text: "A" }, action: "click" }],
+      [{ type: "action", query: { text: "B" }, action: "click" }],
+    ]);
+
+    expect(ctx.errors).toHaveLength(1);
+    expect(ctx.errors[0].message).toContain("all alternatives failed");
   });
 });

@@ -514,6 +514,36 @@ export class AutomationEngine {
           );
         }
         break;
+      case "change":
+        if (wait.query) {
+          const changeDeadline = Date.now() + timeout;
+          const initialPresent = this.executor.findElement(wait.query) !== null;
+          while (Date.now() < changeDeadline) {
+            const nowPresent = this.executor.findElement(wait.query) !== null;
+            if (nowPresent !== initialPresent) return;
+            await new Promise<void>((resolve) => setTimeout(resolve, 50));
+          }
+          throw new Error(`Timed out waiting for change after ${timeout}ms`);
+        }
+        break;
+      case "stable":
+        if (wait.query) {
+          const stableDeadline = Date.now() + timeout;
+          const quietMs = (wait as { quietPeriodMs?: number }).quietPeriodMs ?? 500;
+          let lastPresent = this.executor.findElement(wait.query) !== null;
+          let lastChange = Date.now();
+          while (Date.now() < stableDeadline) {
+            const nowPresent = this.executor.findElement(wait.query) !== null;
+            if (nowPresent !== lastPresent) {
+              lastPresent = nowPresent;
+              lastChange = Date.now();
+            }
+            if (Date.now() - lastChange >= quietMs) return;
+            await new Promise<void>((resolve) => setTimeout(resolve, 50));
+          }
+          throw new Error(`Timed out waiting for stable after ${timeout}ms`);
+        }
+        break;
     }
   }
 }

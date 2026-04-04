@@ -82,6 +82,41 @@ describe("ChainBuilder — fluent API", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Data operation methods
+// ---------------------------------------------------------------------------
+
+describe("ChainBuilder — data operations", () => {
+  it("transform() produces correct step", () => {
+    const steps = new ChainBuilder(executor)
+      .transform("name", "toUpperCase")
+      .steps();
+    const s = steps[0] as { type: string; variable: string; operation: string; args: unknown[] };
+    expect(s.type).toBe("transform");
+    expect(s.variable).toBe("name");
+    expect(s.operation).toBe("toUpperCase");
+    expect(s.args).toEqual([]);
+  });
+
+  it("transform() with args", () => {
+    const steps = new ChainBuilder(executor)
+      .transform("price", "add", 10)
+      .steps();
+    const s = steps[0] as { type: string; variable: string; operation: string; args: unknown[] };
+    expect(s.args).toEqual([10]);
+  });
+
+  it("compute() produces correct step", () => {
+    const steps = new ChainBuilder(executor)
+      .compute("price * quantity", "total")
+      .steps();
+    const s = steps[0] as { type: string; expression: string; variable: string };
+    expect(s.type).toBe("compute");
+    expect(s.expression).toBe("price * quantity");
+    expect(s.variable).toBe("total");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // New action methods
 // ---------------------------------------------------------------------------
 
@@ -176,6 +211,151 @@ describe("ChainBuilder — new action methods", () => {
 // ---------------------------------------------------------------------------
 // Branching
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Control flow builder methods
+// ---------------------------------------------------------------------------
+
+describe("ChainBuilder — control flow", () => {
+  it("set() produces setVariable step", () => {
+    const steps = new ChainBuilder(executor).set("x", 42).steps();
+    const s = steps[0] as { type: string; variable: string; value: unknown };
+    expect(s.type).toBe("setVariable");
+    expect(s.variable).toBe("x");
+    expect(s.value).toBe(42);
+  });
+
+  it("break() produces setVariable _break", () => {
+    const steps = new ChainBuilder(executor).break().steps();
+    const s = steps[0] as { type: string; variable: string; value: unknown };
+    expect(s.type).toBe("setVariable");
+    expect(s.variable).toBe("_break");
+    expect(s.value).toBe(true);
+  });
+
+  it("continue() produces setVariable _continue", () => {
+    const steps = new ChainBuilder(executor).continue().steps();
+    const s = steps[0] as { type: string; variable: string; value: unknown };
+    expect(s.variable).toBe("_continue");
+  });
+
+  it("scope() creates scope step with sub-steps", () => {
+    const steps = new ChainBuilder(executor)
+      .scope(b => b.click({ text: "Inside" }), { temp: true })
+      .steps();
+    const s = steps[0] as { type: string; steps: unknown[]; initialVars?: Record<string, unknown> };
+    expect(s.type).toBe("scope");
+    expect(s.steps).toHaveLength(1);
+    expect(s.initialVars).toEqual({ temp: true });
+  });
+
+  it("forEach() creates forEach step", () => {
+    const steps = new ChainBuilder(executor)
+      .forEach("items", "item", b => b.click({ text: "Item" }), { maxIterations: 10 })
+      .steps();
+    const s = steps[0] as { type: string; collection: string; itemVariable: string; steps: unknown[]; maxIterations?: number };
+    expect(s.type).toBe("forEach");
+    expect(s.collection).toBe("items");
+    expect(s.itemVariable).toBe("item");
+    expect(s.steps).toHaveLength(1);
+    expect(s.maxIterations).toBe(10);
+  });
+
+  it("retryBlock() creates retryBlock step", () => {
+    const steps = new ChainBuilder(executor)
+      .retryBlock(b => b.click({ text: "Retry" }), { maxAttempts: 5, delayMs: 100 })
+      .steps();
+    const s = steps[0] as { type: string; steps: unknown[]; maxAttempts?: number; delayMs?: number };
+    expect(s.type).toBe("retryBlock");
+    expect(s.steps).toHaveLength(1);
+    expect(s.maxAttempts).toBe(5);
+    expect(s.delayMs).toBe(100);
+  });
+
+  it("priority() creates priority step with alternatives", () => {
+    const steps = new ChainBuilder(executor)
+      .priority(
+        b => b.click({ text: "Primary" }),
+        b => b.click({ text: "Fallback" }),
+      )
+      .steps();
+    const s = steps[0] as { type: string; alternatives: unknown[][] };
+    expect(s.type).toBe("priority");
+    expect(s.alternatives).toHaveLength(2);
+    expect(s.alternatives[0]).toHaveLength(1);
+    expect(s.alternatives[1]).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Wait extension builder methods
+// ---------------------------------------------------------------------------
+
+describe("ChainBuilder — wait extensions", () => {
+  it("waitForChange() produces change wait step", () => {
+    const steps = new ChainBuilder(executor)
+      .waitForChange({ text: "Price" }, "text", 5000)
+      .steps();
+    const s = steps[0] as { type: string; spec: { type: string; property?: string; timeout?: number } };
+    expect(s.type).toBe("wait");
+    expect(s.spec.type).toBe("change");
+    expect(s.spec.property).toBe("text");
+    expect(s.spec.timeout).toBe(5000);
+  });
+
+  it("waitForStable() produces stable wait step", () => {
+    const steps = new ChainBuilder(executor)
+      .waitForStable({ text: "Counter" }, "text", 5000, 200)
+      .steps();
+    const s = steps[0] as { type: string; spec: { type: string; property?: string; quietPeriodMs?: number } };
+    expect(s.spec.type).toBe("stable");
+    expect(s.spec.property).toBe("text");
+    expect(s.spec.quietPeriodMs).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Assertion builder methods
+// ---------------------------------------------------------------------------
+
+describe("ChainBuilder — assertion extensions", () => {
+  it("assertCount() produces count assert step", () => {
+    const steps = new ChainBuilder(executor)
+      .assertCount({ role: "button" }, 3)
+      .steps();
+    const s = steps[0] as { type: string; property: string; expected: unknown };
+    expect(s.type).toBe("assert");
+    expect(s.property).toBe("count");
+    expect(s.expected).toBe(3);
+  });
+
+  it("assertRelation() produces spatialRelation assert step", () => {
+    const steps = new ChainBuilder(executor)
+      .assertRelation({ text: "Header" }, "above", { text: "Content" })
+      .steps();
+    const s = steps[0] as { type: string; property: string; expected: { relation: string; query: { text: string } } };
+    expect(s.type).toBe("assert");
+    expect(s.property).toBe("spatialRelation");
+    expect(s.expected.relation).toBe("above");
+    expect(s.expected.query.text).toBe("Content");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runFlow builder method
+// ---------------------------------------------------------------------------
+
+describe("ChainBuilder — runFlow", () => {
+  it("runFlow() produces runFlow step", () => {
+    const steps = new ChainBuilder(executor)
+      .runFlow("loginFlow", { username: "admin" })
+      .steps();
+    const s = steps[0] as { type: string; flowName: string; params?: Record<string, unknown> };
+    expect(s.type).toBe("runFlow");
+    expect(s.flowName).toBe("loginFlow");
+    expect(s.params).toEqual({ username: "admin" });
+  });
+});
 
 describe("ChainBuilder — branching", () => {
   it("if().then().else() creates branch step", () => {

@@ -1,14 +1,17 @@
 /**
- * Configurable retry with exponential backoff.
+ * Configurable retry with multiple backoff strategies.
  *
  * Provides a generic retry wrapper that can be used around any async
- * operation. Supports exponential backoff, maximum delay caps,
- * and conditional retry filtering.
+ * operation. Supports exponential, linear, and fixed backoff strategies,
+ * maximum delay caps, and conditional retry filtering.
  */
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+/** Backoff strategy for delay computation. */
+export type BackoffStrategy = 'exponential' | 'linear' | 'fixed';
 
 /** Configuration for retry behavior. */
 export interface RetryOptions {
@@ -18,8 +21,12 @@ export interface RetryOptions {
   initialDelayMs: number;
   /** Maximum delay between retries in ms (default 10000). */
   maxDelayMs: number;
-  /** Multiplier applied to delay after each attempt (default 2.0). */
+  /** Multiplier applied to delay after each attempt (default 2.0, exponential only). */
   multiplier: number;
+  /** Backoff strategy (default 'exponential'). */
+  strategy?: BackoffStrategy;
+  /** Linear increment per attempt in ms (default = initialDelayMs, linear only). */
+  linearIncrementMs?: number;
   /** Optional predicate to filter which errors should trigger a retry. */
   retryOn?: (error: Error) => boolean;
 }
@@ -28,10 +35,14 @@ export interface RetryOptions {
 export interface DelayOptions {
   /** Base delay in ms. */
   initialDelayMs: number;
-  /** Multiplier applied per attempt. */
+  /** Multiplier applied per attempt (exponential only). */
   multiplier: number;
   /** Maximum delay in ms. */
   maxDelayMs: number;
+  /** Backoff strategy (default 'exponential'). */
+  strategy?: BackoffStrategy;
+  /** Linear increment per attempt in ms (default = initialDelayMs, linear only). */
+  linearIncrementMs?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -55,19 +66,35 @@ export function createDefaultRetryOptions(): RetryOptions {
 // ---------------------------------------------------------------------------
 
 /**
- * Compute the delay for a given attempt using exponential backoff.
+ * Compute the delay for a given attempt using the configured backoff strategy.
  *
- * For attempt 0 (first retry), the delay equals `initialDelayMs`.
- * Each subsequent attempt multiplies the delay by `multiplier`,
- * capped at `maxDelayMs`.
+ * - **exponential** (default): `initialDelayMs * multiplier^attempt`, capped at `maxDelayMs`.
+ * - **linear**: `initialDelayMs + attempt * linearIncrementMs`, capped at `maxDelayMs`.
+ * - **fixed**: always `initialDelayMs`.
  *
  * @param attempt - Zero-based retry attempt index (0 = first retry).
- * @param options - Delay configuration with initialDelayMs, multiplier, and maxDelayMs.
+ * @param options - Delay configuration.
  * @returns Delay in milliseconds.
  */
 export function computeDelay(attempt: number, options: DelayOptions): number {
-  const base = options.initialDelayMs * Math.pow(options.multiplier, attempt);
-  return Math.min(Math.round(base), options.maxDelayMs);
+  const strategy = options.strategy ?? 'exponential';
+
+  switch (strategy) {
+    case 'fixed':
+      return options.initialDelayMs;
+
+    case 'linear': {
+      const increment = options.linearIncrementMs ?? options.initialDelayMs;
+      const delay = options.initialDelayMs + attempt * increment;
+      return Math.min(Math.round(delay), options.maxDelayMs);
+    }
+
+    case 'exponential':
+    default: {
+      const base = options.initialDelayMs * Math.pow(options.multiplier, attempt);
+      return Math.min(Math.round(base), options.maxDelayMs);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

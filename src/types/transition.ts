@@ -47,7 +47,7 @@ export type ActionType =
 // ---------------------------------------------------------------------------
 
 /** How to wait after an action completes. */
-export type WaitType = "idle" | "element" | "state" | "time" | "condition" | "vanish";
+export type WaitType = "idle" | "element" | "state" | "time" | "condition" | "vanish" | "change" | "stable";
 
 /**
  * Specification for what to wait for after an action executes.
@@ -64,6 +64,10 @@ export interface WaitSpec {
   ms?: number;
   /** Maximum wait time before timeout (default 10000). */
   timeout?: number;
+  /** Element property to monitor (when type is "change" or "stable"). */
+  property?: string;
+  /** How long the property must remain unchanged in ms (when type is "stable", default 500). */
+  quietPeriodMs?: number;
 }
 
 // ---------------------------------------------------------------------------

@@ -84,6 +84,38 @@ export class MockActionExecutor implements ActionExecutorLike {
     // No-op in tests — immediately idle
   }
 
+  findAllElements(query: ElementQuery): { id: string }[] {
+    const results: { id: string }[] = [];
+
+    // Check specific keys
+    if (query.role) {
+      const key = `role:${query.role}`;
+      if (this.elementMap.has(key)) {
+        results.push({ id: this.elementMap.get(key)! });
+      }
+    }
+    if (query.text) {
+      const key = `text:${query.text}`;
+      if (this.elementMap.has(key)) {
+        results.push({ id: this.elementMap.get(key)! });
+      }
+    }
+
+    // If no specific matches, try wildcard
+    if (results.length === 0 && this.elementMap.has("*")) {
+      results.push({ id: this.elementMap.get("*")! });
+    }
+
+    return results;
+  }
+
+  /** Map of element ID to bounding rect for spatial assertions. */
+  private rectMap = new Map<string, { x: number; y: number; width: number; height: number }>();
+
+  getElementRect(id: string): { x: number; y: number; width: number; height: number } | null {
+    return this.rectMap.get(id) ?? null;
+  }
+
   // ---------------------------------------------------------------------------
   // Test helpers
   // ---------------------------------------------------------------------------
@@ -111,11 +143,19 @@ export class MockActionExecutor implements ActionExecutorLike {
   }
 
   /**
+   * Register a bounding rect for an element ID (for spatial assertions).
+   */
+  registerRect(elementId: string, rect: { x: number; y: number; width: number; height: number }): void {
+    this.rectMap.set(elementId, rect);
+  }
+
+  /**
    * Clear all recorded actions.
    */
   reset(): void {
     this.executedActions = [];
     this.elementMap.clear();
+    this.rectMap.clear();
     this.nextError = null;
     this.actionDelay = 0;
   }

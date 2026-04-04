@@ -26,7 +26,7 @@ export interface ActionStep {
 }
 
 export interface WaitSpec {
-  type: "idle" | "element" | "state" | "time" | "condition" | "vanish";
+  type: "idle" | "element" | "state" | "time" | "condition" | "vanish" | "change" | "stable";
   query?: ElementQuery;
   stateId?: string;
   ms?: number;
@@ -115,6 +115,36 @@ async function executeWait(
         await new Promise<void>((resolve) => setTimeout(resolve, 50));
       }
       throw new Error(`Wait for element to vanish timed out after ${timeout}ms`);
+    }
+
+    case "change": {
+      if (!spec.query) break;
+      const changeDeadline = Date.now() + timeout;
+      const initialFound = findFirst(registry.getAllElements(), spec.query) !== null;
+      while (Date.now() < changeDeadline) {
+        const nowFound = findFirst(registry.getAllElements(), spec.query) !== null;
+        if (nowFound !== initialFound) return;
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
+      throw new Error(`Wait for change timed out after ${timeout}ms`);
+    }
+
+    case "stable": {
+      if (!spec.query) break;
+      const stableDeadline = Date.now() + timeout;
+      const quietMs = (spec as { quietPeriodMs?: number }).quietPeriodMs ?? 500;
+      let lastFound = findFirst(registry.getAllElements(), spec.query) !== null;
+      let lastChangeAt = Date.now();
+      while (Date.now() < stableDeadline) {
+        const nowFound = findFirst(registry.getAllElements(), spec.query) !== null;
+        if (nowFound !== lastFound) {
+          lastFound = nowFound;
+          lastChangeAt = Date.now();
+        }
+        if (Date.now() - lastChangeAt >= quietMs) return;
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
+      throw new Error(`Wait for stable timed out after ${timeout}ms`);
     }
   }
 }

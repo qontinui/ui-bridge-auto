@@ -292,6 +292,8 @@ export { waitForElement } from "./wait/wait-for-element";
 export { waitForState } from "./wait/wait-for-state";
 export { waitForIdle } from "./wait/wait-for-idle";
 export { waitForCondition } from "./wait/wait-for-condition";
+export { waitForChange, type WaitForChangeOptions } from "./wait/wait-for-change";
+export { waitForStable, type WaitForStableOptions } from "./wait/wait-for-stable";
 
 // Batch
 export {
@@ -329,6 +331,7 @@ export {
   type ClickUntilCondition,
   createChainContext,
   ActionChain,
+  actionStepsToChainSteps,
   ChainBuilder,
   ConditionalBuilder,
   loop,
@@ -336,6 +339,13 @@ export {
   switchCase,
   repeatUntilElement,
   clickUntil,
+  forEach,
+  retryChain,
+  priorityExecute,
+  type ChainHooks,
+  type CircuitBreakerConfig,
+  CircuitBreaker,
+  type BackoffStrategy,
   type RetryOptions,
   type DelayOptions,
   createDefaultRetryOptions,
@@ -345,6 +355,14 @@ export {
   extractToVariable,
   interpolate,
   evaluateExpression,
+  type StringOp,
+  type MathOp,
+  type CollectionOp,
+  stringOp,
+  mathOp,
+  collectionOp,
+  applyTransform,
+  computeExpression,
 } from "./actions";
 
 // Execution engine

@@ -126,6 +126,41 @@ describe("computeDelay", () => {
     const delay = computeDelay(10, { initialDelayMs: 100, multiplier: 2, maxDelayMs: 5000 });
     expect(delay).toBe(5000);
   });
+
+  it("linear strategy: delay increases linearly", () => {
+    const opts = { initialDelayMs: 100, multiplier: 2, maxDelayMs: 10000, strategy: 'linear' as const };
+    expect(computeDelay(0, opts)).toBe(100);  // 100 + 0 * 100
+    expect(computeDelay(1, opts)).toBe(200);  // 100 + 1 * 100
+    expect(computeDelay(2, opts)).toBe(300);  // 100 + 2 * 100
+    expect(computeDelay(5, opts)).toBe(600);  // 100 + 5 * 100
+  });
+
+  it("linear strategy: uses custom linearIncrementMs", () => {
+    const opts = { initialDelayMs: 100, multiplier: 2, maxDelayMs: 10000, strategy: 'linear' as const, linearIncrementMs: 50 };
+    expect(computeDelay(0, opts)).toBe(100);  // 100 + 0 * 50
+    expect(computeDelay(1, opts)).toBe(150);  // 100 + 1 * 50
+    expect(computeDelay(4, opts)).toBe(300);  // 100 + 4 * 50
+  });
+
+  it("linear strategy: caps at maxDelayMs", () => {
+    const opts = { initialDelayMs: 100, multiplier: 2, maxDelayMs: 250, strategy: 'linear' as const };
+    expect(computeDelay(5, opts)).toBe(250);
+  });
+
+  it("fixed strategy: always returns initialDelayMs", () => {
+    const opts = { initialDelayMs: 200, multiplier: 2, maxDelayMs: 10000, strategy: 'fixed' as const };
+    expect(computeDelay(0, opts)).toBe(200);
+    expect(computeDelay(1, opts)).toBe(200);
+    expect(computeDelay(5, opts)).toBe(200);
+    expect(computeDelay(99, opts)).toBe(200);
+  });
+
+  it("defaults to exponential when no strategy specified", () => {
+    const opts = { initialDelayMs: 100, multiplier: 2, maxDelayMs: 10000 };
+    expect(computeDelay(0, opts)).toBe(100);
+    expect(computeDelay(1, opts)).toBe(200);
+    expect(computeDelay(3, opts)).toBe(800);
+  });
 });
 
 // ---------------------------------------------------------------------------

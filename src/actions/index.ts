@@ -33,6 +33,7 @@ export {
   type ClickUntilCondition,
   createChainContext,
   ActionChain,
+  actionStepsToChainSteps,
 } from './action-chain';
 
 // Fluent builder
@@ -48,10 +49,14 @@ export {
   switchCase,
   repeatUntilElement,
   clickUntil,
+  forEach,
+  retryChain,
+  priorityExecute,
 } from './control-flow';
 
 // Retry
 export {
+  type BackoffStrategy,
   type RetryOptions,
   type DelayOptions,
   createDefaultRetryOptions,
@@ -66,3 +71,25 @@ export {
   interpolate,
   evaluateExpression,
 } from './data-operations';
+
+// Hooks and circuit breaker
+export {
+  type ChainHooks,
+  type CircuitBreakerConfig,
+  CircuitBreaker,
+} from './hooks';
+
+// Extended data operations
+export {
+  type StringOp,
+  type MathOp,
+  type CollectionOp,
+  stringOp,
+  mathOp,
+  collectionOp,
+  applyTransform,
+  computeExpression,
+  isStringOp,
+  isMathOp,
+  isCollectionOp,
+} from './data-ops-extended';

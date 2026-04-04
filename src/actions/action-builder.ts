@@ -11,6 +11,9 @@ import type { ActionType, WaitSpec } from '../types/transition';
 import type { ChainStep, ChainContext, ChainOptions, ChainResult, ClickUntilCondition } from './action-chain';
 import { ActionChain } from './action-chain';
 import type { ActionExecutorLike } from '../state/transition-executor';
+import type { FlowRegistry } from '../batch/flow';
+import type { ChainHooks, CircuitBreakerConfig } from './hooks';
+import { CircuitBreaker } from './hooks';
 
 // ---------------------------------------------------------------------------
 // ChainBuilder
@@ -35,9 +38,29 @@ import type { ActionExecutorLike } from '../state/transition-executor';
 export class ChainBuilder {
   private readonly _steps: ChainStep[] = [];
   private readonly _executor: ActionExecutorLike;
+  private readonly _flowRegistry?: FlowRegistry;
+  private _hooks?: ChainHooks;
+  private _circuitBreaker?: CircuitBreaker;
 
-  constructor(executor: ActionExecutorLike) {
+  constructor(executor: ActionExecutorLike, flowRegistry?: FlowRegistry) {
     this._executor = executor;
+    this._flowRegistry = flowRegistry;
+  }
+
+  /**
+   * Set lifecycle hooks for this chain's execution.
+   */
+  withHooks(hooks: ChainHooks): ChainBuilder {
+    this._hooks = hooks;
+    return this;
+  }
+
+  /**
+   * Enable a circuit breaker for action steps in this chain.
+   */
+  withCircuitBreaker(config: CircuitBreakerConfig): ChainBuilder {
+    this._circuitBreaker = new CircuitBreaker(config);
+    return this;
   }
 
   /**
@@ -285,6 +308,40 @@ export class ChainBuilder {
   }
 
   /**
+   * Add a wait-for-change step — waits for an element property to change.
+   */
+  waitForChange(query: ElementQuery, property: string, timeout?: number): ChainBuilder {
+    const spec: WaitSpec = {
+      type: 'change',
+      query: { text: query.text, role: query.role, ariaLabel: query.ariaLabel },
+      property,
+      timeout,
+    };
+    this._steps.push({ type: 'wait', spec });
+    return this;
+  }
+
+  /**
+   * Add a wait-for-stable step — waits for an element property to stop changing.
+   */
+  waitForStable(
+    query: ElementQuery,
+    property: string,
+    timeout?: number,
+    quietPeriodMs?: number,
+  ): ChainBuilder {
+    const spec: WaitSpec = {
+      type: 'stable',
+      query: { text: query.text, role: query.role, ariaLabel: query.ariaLabel },
+      property,
+      timeout,
+      quietPeriodMs,
+    };
+    this._steps.push({ type: 'wait', spec });
+    return this;
+  }
+
+  /**
    * Add a clickUntil step — repeatedly clicks until a condition is met.
    */
   clickUntil(
@@ -316,6 +373,119 @@ export class ChainBuilder {
     if (lastStep && lastStep.type === 'action') {
       lastStep.repetition = { count, pauseBetweenMs };
     }
+    return this;
+  }
+
+  /**
+   * Add a transform step — apply a data operation to a chain variable.
+   * Auto-detects string/math/collection operation based on value type.
+   */
+  transform(variable: string, operation: string, ...args: unknown[]): ChainBuilder {
+    this._steps.push({ type: 'transform', variable, operation, args });
+    return this;
+  }
+
+  /**
+   * Add a compute step — evaluate an arithmetic expression and store the result.
+   * Expression format: "varA + varB", "price * quantity", "count - 1".
+   * Tokens are resolved as variable names or literal numbers.
+   */
+  compute(expression: string, variable: string): ChainBuilder {
+    this._steps.push({ type: 'compute', expression, variable });
+    return this;
+  }
+
+  /**
+   * Set a variable in the chain context.
+   */
+  set(variable: string, value: unknown): ChainBuilder {
+    this._steps.push({ type: 'setVariable', variable, value });
+    return this;
+  }
+
+  /**
+   * Signal a break from the current forEach loop.
+   */
+  break(): ChainBuilder {
+    this._steps.push({ type: 'setVariable', variable: '_break', value: true });
+    return this;
+  }
+
+  /**
+   * Signal a continue (skip to next iteration) in a forEach loop.
+   */
+  continue(): ChainBuilder {
+    this._steps.push({ type: 'setVariable', variable: '_continue', value: true });
+    return this;
+  }
+
+  /**
+   * Execute steps in an isolated variable scope.
+   * Variables created inside the scope are discarded when it exits.
+   */
+  scope(
+    configure: (b: ChainBuilder) => void,
+    initialVars?: Record<string, unknown>,
+  ): ChainBuilder {
+    const subBuilder = new ChainBuilder(this._executor);
+    configure(subBuilder);
+    this._steps.push({ type: 'scope', steps: subBuilder.steps(), initialVars });
+    return this;
+  }
+
+  /**
+   * Iterate over a collection variable, executing steps for each item.
+   * Sets the item variable and _index/_length per iteration.
+   * Use .break() and .continue() inside the loop body.
+   */
+  forEach(
+    collection: string,
+    itemVariable: string,
+    configure: (b: ChainBuilder) => void,
+    options?: { maxIterations?: number },
+  ): ChainBuilder {
+    const subBuilder = new ChainBuilder(this._executor);
+    configure(subBuilder);
+    this._steps.push({
+      type: 'forEach',
+      collection,
+      itemVariable,
+      steps: subBuilder.steps(),
+      maxIterations: options?.maxIterations,
+    });
+    return this;
+  }
+
+  /**
+   * Retry a block of steps on failure.
+   * Retries the entire sequence as a unit up to maxAttempts times.
+   */
+  retryBlock(
+    configure: (b: ChainBuilder) => void,
+    options?: { maxAttempts?: number; delayMs?: number },
+  ): ChainBuilder {
+    const subBuilder = new ChainBuilder(this._executor);
+    configure(subBuilder);
+    this._steps.push({
+      type: 'retryBlock',
+      steps: subBuilder.steps(),
+      maxAttempts: options?.maxAttempts,
+      delayMs: options?.delayMs,
+    });
+    return this;
+  }
+
+  /**
+   * Try alternative step sequences in priority order.
+   * Executes the first alternative; if it fails, tries the next, and so on.
+   */
+  priority(...alternatives: ((b: ChainBuilder) => void)[]): ChainBuilder {
+    const altSteps = alternatives.map((configure) => {
+      const subBuilder = new ChainBuilder(this._executor);
+      configure(subBuilder);
+      return subBuilder.steps();
+    });
+    this._steps.push({ type: 'priority', alternatives: altSteps });
     return this;
   }
 
@@ -404,11 +574,54 @@ export class ChainBuilder {
   }
 
   /**
+   * Assert that the number of elements matching a query equals the expected count.
+   * Requires findAllElements on the executor.
+   */
+  assertCount(query: ElementQuery, expected: number): ChainBuilder {
+    this._steps.push({ type: 'assert', query, property: 'count', expected });
+    return this;
+  }
+
+  /**
+   * Assert that element A has a spatial relation to element B.
+   * Relations: 'above', 'below', 'leftOf', 'rightOf'.
+   * Requires getElementRect on the executor.
+   */
+  assertRelation(
+    queryA: ElementQuery,
+    relation: 'above' | 'below' | 'leftOf' | 'rightOf',
+    queryB: ElementQuery,
+  ): ChainBuilder {
+    this._steps.push({
+      type: 'assert',
+      query: queryA,
+      property: 'spatialRelation',
+      expected: { relation, query: queryB },
+    });
+    return this;
+  }
+
+  /**
+   * Run a named flow as a scoped sub-chain.
+   * Requires a FlowRegistry to be passed to the ChainBuilder constructor.
+   */
+  runFlow(flowName: string, params?: Record<string, unknown>): ChainBuilder {
+    this._steps.push({ type: 'runFlow', flowName, params });
+    return this;
+  }
+
+  /**
    * Execute the built chain.
    */
   async execute(options?: ChainOptions): Promise<ChainResult> {
     const chain = new ActionChain(this._executor);
-    return chain.execute(this._steps, options);
+    const mergedOptions: ChainOptions = {
+      ...options,
+      flowRegistry: options?.flowRegistry ?? this._flowRegistry,
+      hooks: options?.hooks ?? this._hooks,
+      circuitBreaker: options?.circuitBreaker ?? this._circuitBreaker,
+    };
+    return chain.execute(this._steps, mergedOptions);
   }
 
   /**

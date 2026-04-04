@@ -16,6 +16,11 @@ import {
   markFailed,
 } from '../types/action';
 import type { ActionExecutorLike } from '../state/transition-executor';
+import { applyTransform, computeExpression } from './data-ops-extended';
+import type { FlowRegistry } from '../batch/flow';
+import type { ChainHooks } from './hooks';
+import type { CircuitBreaker } from './hooks';
+import type { ActionStep, WaitSpec as BatchWaitSpec } from '../batch/action-sequence';
 
 // ---------------------------------------------------------------------------
 // Step types
@@ -37,7 +42,15 @@ export type ChainStep =
   | { type: 'parallel'; steps: ChainStep[][] }
   | { type: 'extract'; query: ElementQuery; property: string; variable: string }
   | { type: 'assert'; query: ElementQuery; property: string; expected: unknown }
-  | { type: 'clickUntil'; query: ElementQuery; condition: ClickUntilCondition; maxRepetitions?: number; pauseBetweenMs?: number; timeout?: number };
+  | { type: 'clickUntil'; query: ElementQuery; condition: ClickUntilCondition; maxRepetitions?: number; pauseBetweenMs?: number; timeout?: number }
+  | { type: 'transform'; variable: string; operation: string; args: unknown[] }
+  | { type: 'compute'; expression: string; variable: string }
+  | { type: 'setVariable'; variable: string; value: unknown }
+  | { type: 'scope'; steps: ChainStep[]; initialVars?: Record<string, unknown> }
+  | { type: 'forEach'; collection: string; itemVariable: string; steps: ChainStep[]; maxIterations?: number }
+  | { type: 'retryBlock'; steps: ChainStep[]; maxAttempts?: number; delayMs?: number }
+  | { type: 'priority'; alternatives: ChainStep[][] }
+  | { type: 'runFlow'; flowName: string; params?: Record<string, unknown> };
 
 // ---------------------------------------------------------------------------
 // Context
@@ -85,6 +98,12 @@ export interface ChainOptions {
   timeout?: number;
   /** Callback invoked after each step completes. */
   onStepComplete?: (step: ChainStep, result: ActionRecord | null) => void;
+  /** Flow registry for runFlow steps. */
+  flowRegistry?: FlowRegistry;
+  /** Lifecycle hooks for step execution. */
+  hooks?: ChainHooks;
+  /** Circuit breaker for action steps. */
+  circuitBreaker?: CircuitBreaker;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +184,8 @@ export class ActionChain {
   ): Promise<void> {
     for (const step of steps) {
       if (ctx.aborted) break;
+      // Stop executing remaining steps if a break or continue signal is pending.
+      if (ctx.variables._break || ctx.variables._continue) break;
 
       if (Date.now() >= timeoutAt) {
         ctx.errors.push(new Error('Chain execution timed out'));
@@ -192,6 +213,60 @@ export class ActionChain {
     opts: ChainOptions,
     timeoutAt: number,
   ): Promise<void> {
+    // Circuit breaker check for action steps.
+    if (step.type === 'action' && opts.circuitBreaker) {
+      const cbKey = step.action;
+      if (opts.circuitBreaker.isOpen(cbKey)) {
+        throw new Error(`Circuit breaker open for action "${cbKey}" — skipping`);
+      }
+    }
+
+    // Before-step hook.
+    if (opts.hooks?.beforeStep) {
+      await opts.hooks.beforeStep(step, ctx);
+    }
+
+    try {
+      await this.executeStepDispatch(step, ctx, opts, timeoutAt);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+
+      // Record failure on circuit breaker.
+      if (step.type === 'action' && opts.circuitBreaker) {
+        opts.circuitBreaker.recordFailure(step.action);
+      }
+
+      // Error hook.
+      if (opts.hooks?.onError) {
+        await opts.hooks.onError(step, error, ctx);
+      }
+
+      // After-step hook with error.
+      if (opts.hooks?.afterStep) {
+        await opts.hooks.afterStep(step, ctx, error);
+      }
+
+      throw error;
+    }
+
+    // Record success on circuit breaker.
+    if (step.type === 'action' && opts.circuitBreaker) {
+      opts.circuitBreaker.recordSuccess(step.action);
+    }
+
+    // After-step hook (success).
+    if (opts.hooks?.afterStep) {
+      await opts.hooks.afterStep(step, ctx);
+    }
+  }
+
+  /** Dispatch a step to the appropriate handler. */
+  private async executeStepDispatch(
+    step: ChainStep,
+    ctx: ChainContext,
+    opts: ChainOptions,
+    timeoutAt: number,
+  ): Promise<void> {
     switch (step.type) {
       case 'action':
         await this.executeActionStep(step, ctx, opts);
@@ -213,6 +288,30 @@ export class ActionChain {
         break;
       case 'clickUntil':
         await this.executeClickUntilStep(step, ctx, opts);
+        break;
+      case 'transform':
+        this.executeTransformStep(step, ctx);
+        break;
+      case 'compute':
+        this.executeComputeStep(step, ctx);
+        break;
+      case 'setVariable':
+        ctx.variables[step.variable] = step.value;
+        break;
+      case 'scope':
+        await this.executeScopeStep(step, ctx, opts, timeoutAt);
+        break;
+      case 'forEach':
+        await this.executeForEachStep(step, ctx, opts, timeoutAt);
+        break;
+      case 'retryBlock':
+        await this.executeRetryBlockStep(step, ctx, opts, timeoutAt);
+        break;
+      case 'priority':
+        await this.executePriorityStep(step, ctx, opts, timeoutAt);
+        break;
+      case 'runFlow':
+        await this.executeRunFlowStep(step, ctx, opts, timeoutAt);
         break;
     }
   }
@@ -321,6 +420,56 @@ export class ActionChain {
         }
         throw new Error(`waitForVanish timed out after ${timeout}ms`);
       }
+      case 'change': {
+        // In the chain context, we can only detect element presence changes
+        // since ActionExecutorLike doesn't expose element properties.
+        // Poll findElement and detect when the element appears/disappears.
+        const changeTimeout = spec.timeout ?? 10_000;
+        const changeInterval = 100;
+        const changeStarted = Date.now();
+        const initiallyPresent = spec.query
+          ? this._executor.findElement({ text: spec.query.text, role: spec.query.role, ariaLabel: spec.query.ariaLabel }) !== null
+          : false;
+        while (Date.now() - changeStarted < changeTimeout) {
+          if (spec.query) {
+            const nowPresent = this._executor.findElement({
+              text: spec.query.text,
+              role: spec.query.role,
+              ariaLabel: spec.query.ariaLabel,
+            }) !== null;
+            if (nowPresent !== initiallyPresent) return; // Changed
+          }
+          await new Promise((resolve) => setTimeout(resolve, changeInterval));
+        }
+        throw new Error(`waitForChange timed out after ${changeTimeout}ms`);
+      }
+      case 'stable': {
+        // Wait until element presence stops changing for quietPeriodMs.
+        const stableTimeout = spec.timeout ?? 10_000;
+        const quietPeriod = spec.quietPeriodMs ?? 500;
+        const stableInterval = 50;
+        const stableStarted = Date.now();
+        let lastState = spec.query
+          ? this._executor.findElement({ text: spec.query.text, role: spec.query.role, ariaLabel: spec.query.ariaLabel }) !== null
+          : false;
+        let lastChangeTime = Date.now();
+        while (Date.now() - stableStarted < stableTimeout) {
+          if (spec.query) {
+            const nowPresent = this._executor.findElement({
+              text: spec.query.text,
+              role: spec.query.role,
+              ariaLabel: spec.query.ariaLabel,
+            }) !== null;
+            if (nowPresent !== lastState) {
+              lastState = nowPresent;
+              lastChangeTime = Date.now();
+            }
+          }
+          if (Date.now() - lastChangeTime >= quietPeriod) return; // Stable
+          await new Promise((resolve) => setTimeout(resolve, stableInterval));
+        }
+        throw new Error(`waitForStable timed out after ${stableTimeout}ms`);
+      }
     }
   }
 
@@ -386,7 +535,57 @@ export class ActionChain {
     step: Extract<ChainStep, { type: 'assert' }>,
     ctx: ChainContext,
   ): Promise<void> {
-    // First, verify the element exists.
+    // Count assertion: check how many elements match the query.
+    if (step.property === 'count') {
+      if (!this._executor.findAllElements) {
+        throw new Error('assertCount: findAllElements not available on executor');
+      }
+      const matches = this._executor.findAllElements(step.query);
+      const expectedCount = Number(step.expected);
+      if (matches.length !== expectedCount) {
+        throw new Error(
+          `Assertion failed: expected count ${expectedCount}, got ${matches.length} for query: ${JSON.stringify(step.query)}`,
+        );
+      }
+      return;
+    }
+
+    // Spatial relation assertion: check position relative to another element.
+    if (step.property === 'spatialRelation') {
+      const spec = step.expected as { relation: string; query: ElementQuery };
+      if (!spec || !spec.relation || !spec.query) {
+        throw new Error('assertRelation: expected must have { relation, query }');
+      }
+      if (!this._executor.getElementRect) {
+        throw new Error('assertRelation: getElementRect not available on executor');
+      }
+      const foundA = this._executor.findElement(step.query);
+      const foundB = this._executor.findElement(spec.query);
+      if (!foundA) throw new Error(`assertRelation: element A not found: ${JSON.stringify(step.query)}`);
+      if (!foundB) throw new Error(`assertRelation: element B not found: ${JSON.stringify(spec.query)}`);
+      const rectA = this._executor.getElementRect(foundA.id);
+      const rectB = this._executor.getElementRect(foundB.id);
+      if (!rectA || !rectB) throw new Error('assertRelation: could not get element rects');
+
+      const centerA = { x: rectA.x + rectA.width / 2, y: rectA.y + rectA.height / 2 };
+      const centerB = { x: rectB.x + rectB.width / 2, y: rectB.y + rectB.height / 2 };
+      let matches = false;
+      switch (spec.relation) {
+        case 'above': matches = centerA.y < centerB.y; break;
+        case 'below': matches = centerA.y > centerB.y; break;
+        case 'leftOf': matches = centerA.x < centerB.x; break;
+        case 'rightOf': matches = centerA.x > centerB.x; break;
+        default: throw new Error(`assertRelation: unknown relation "${spec.relation}"`);
+      }
+      if (!matches) {
+        throw new Error(
+          `Assertion failed: element A is not ${spec.relation} element B`,
+        );
+      }
+      return;
+    }
+
+    // Standard assertion: verify the element exists.
     const found = this._executor.findElement(step.query);
     if (!found) {
       throw new Error(
@@ -472,4 +671,222 @@ export class ActionChain {
 
     throw new Error(`clickUntil: condition not met after ${maxReps} repetitions`);
   }
+
+  /** Execute a transform step — apply a data operation to a variable. */
+  private executeTransformStep(
+    step: Extract<ChainStep, { type: 'transform' }>,
+    ctx: ChainContext,
+  ): void {
+    const value = ctx.variables[step.variable];
+    if (value === undefined) {
+      throw new Error(`transform: variable "${step.variable}" is not defined`);
+    }
+    ctx.variables[step.variable] = applyTransform(value, step.operation, step.args);
+  }
+
+  /** Execute a compute step — evaluate an arithmetic expression and store the result. */
+  private executeComputeStep(
+    step: Extract<ChainStep, { type: 'compute' }>,
+    ctx: ChainContext,
+  ): void {
+    ctx.variables[step.variable] = computeExpression(step.expression, ctx.variables);
+  }
+
+  /** Execute a scope step — run steps with isolated variables. */
+  private async executeScopeStep(
+    step: Extract<ChainStep, { type: 'scope' }>,
+    ctx: ChainContext,
+    opts: ChainOptions,
+    timeoutAt: number,
+  ): Promise<void> {
+    const saved = { ...ctx.variables };
+    if (step.initialVars) {
+      Object.assign(ctx.variables, step.initialVars);
+    }
+    try {
+      await this.executeSteps(step.steps, ctx, opts, timeoutAt);
+    } finally {
+      ctx.variables = saved;
+    }
+  }
+
+  /** Execute a forEach step — iterate over a collection variable. */
+  private async executeForEachStep(
+    step: Extract<ChainStep, { type: 'forEach' }>,
+    ctx: ChainContext,
+    opts: ChainOptions,
+    timeoutAt: number,
+  ): Promise<void> {
+    const collection = ctx.variables[step.collection];
+    if (!Array.isArray(collection)) {
+      throw new Error(
+        `forEach: variable "${step.collection}" is not an array (got ${typeof collection})`,
+      );
+    }
+
+    const max = Math.min(collection.length, step.maxIterations ?? 1000);
+
+    for (let i = 0; i < max; i++) {
+      if (ctx.aborted) break;
+      if (Date.now() >= timeoutAt) {
+        ctx.errors.push(new Error('forEach: chain execution timed out'));
+        ctx.aborted = true;
+        break;
+      }
+
+      // Clear continue signal from previous iteration.
+      delete ctx.variables._continue;
+
+      // Set iteration variables.
+      ctx.variables[step.itemVariable] = collection[i];
+      ctx.variables._index = i;
+      ctx.variables._length = collection.length;
+
+      // Execute inner steps.
+      await this.executeSteps(step.steps, ctx, opts, timeoutAt);
+
+      // Check break signal.
+      if (ctx.variables._break) {
+        delete ctx.variables._break;
+        break;
+      }
+    }
+
+    // Clean up iteration variables.
+    delete ctx.variables[step.itemVariable];
+    delete ctx.variables._index;
+    delete ctx.variables._length;
+    delete ctx.variables._continue;
+    delete ctx.variables._break;
+  }
+
+  /** Execute a retryBlock step — retry a sequence of steps on failure. */
+  private async executeRetryBlockStep(
+    step: Extract<ChainStep, { type: 'retryBlock' }>,
+    ctx: ChainContext,
+    opts: ChainOptions,
+    timeoutAt: number,
+  ): Promise<void> {
+    const maxAttempts = step.maxAttempts ?? 3;
+    const delayMs = step.delayMs ?? 500;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const subCtx = createChainContext();
+      subCtx.variables = { ...ctx.variables };
+
+      await this.executeSteps(step.steps, subCtx, { ...opts, stopOnError: true }, timeoutAt);
+
+      if (subCtx.errors.length === 0) {
+        // Success — merge results and variables into parent.
+        ctx.results.push(...subCtx.results);
+        Object.assign(ctx.variables, subCtx.variables);
+        return;
+      }
+
+      // Record attempt results even on failure.
+      ctx.results.push(...subCtx.results);
+
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+
+    ctx.errors.push(new Error(`retryBlock: all ${maxAttempts} attempts failed`));
+  }
+
+  /** Execute a priority step — try alternatives in order, use first success. */
+  private async executePriorityStep(
+    step: Extract<ChainStep, { type: 'priority' }>,
+    ctx: ChainContext,
+    opts: ChainOptions,
+    timeoutAt: number,
+  ): Promise<void> {
+    for (const alternative of step.alternatives) {
+      const subCtx = createChainContext();
+      subCtx.variables = { ...ctx.variables };
+
+      await this.executeSteps(alternative, subCtx, { ...opts, stopOnError: true }, timeoutAt);
+
+      if (subCtx.errors.length === 0) {
+        // Success — merge results and variables into parent.
+        ctx.results.push(...subCtx.results);
+        Object.assign(ctx.variables, subCtx.variables);
+        return;
+      }
+    }
+
+    ctx.errors.push(new Error('priority: all alternatives failed'));
+  }
+
+  /** Execute a runFlow step — run a named flow as a scoped sub-chain. */
+  private async executeRunFlowStep(
+    step: Extract<ChainStep, { type: 'runFlow' }>,
+    ctx: ChainContext,
+    opts: ChainOptions,
+    timeoutAt: number,
+  ): Promise<void> {
+    if (!opts.flowRegistry) {
+      throw new Error('runFlow: no FlowRegistry configured in ChainOptions');
+    }
+    const flow = opts.flowRegistry.get(step.flowName);
+    if (!flow) {
+      throw new Error(`runFlow: flow "${step.flowName}" not found`);
+    }
+
+    const chainSteps = actionStepsToChainSteps(flow.steps);
+
+    // Scoped execution: snapshot variables, merge params, execute, restore.
+    const saved = { ...ctx.variables };
+    if (step.params) {
+      Object.assign(ctx.variables, step.params);
+    }
+    try {
+      await this.executeSteps(chainSteps, ctx, opts, timeoutAt);
+    } finally {
+      ctx.variables = saved;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Utility: convert ActionStep[] to ChainStep[]
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert a batch WaitSpec to a transition WaitSpec.
+ * The batch WaitSpec uses ElementQuery for query, while the transition WaitSpec uses ElementCriteria.
+ */
+function convertWaitSpec(batchSpec: BatchWaitSpec): WaitSpec {
+  return {
+    type: batchSpec.type as WaitSpec['type'],
+    query: batchSpec.query
+      ? { text: batchSpec.query.text, role: batchSpec.query.role, ariaLabel: batchSpec.query.ariaLabel }
+      : undefined,
+    stateId: batchSpec.stateId,
+    ms: batchSpec.ms,
+    timeout: batchSpec.timeout,
+  };
+}
+
+/**
+ * Convert batch ActionStep definitions to ChainStep arrays.
+ * Each ActionStep becomes an action step, optionally preceded/followed by wait steps.
+ */
+export function actionStepsToChainSteps(steps: ActionStep[]): ChainStep[] {
+  const result: ChainStep[] = [];
+  for (const step of steps) {
+    if (step.waitBefore) {
+      result.push({ type: 'wait', spec: convertWaitSpec(step.waitBefore) });
+    }
+    result.push({
+      type: 'action',
+      query: step.target,
+      action: step.action,
+      params: step.params,
+    });
+    if (step.waitAfter) {
+      result.push({ type: 'wait', spec: convertWaitSpec(step.waitAfter) });
+    }
+  }
+  return result;
 }

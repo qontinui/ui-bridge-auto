@@ -19,6 +19,10 @@ export interface ActionExecutorLike {
     params?: Record<string, unknown>,
   ): Promise<void>;
   waitForIdle(timeout?: number): Promise<void>;
+  /** Find all matching elements (optional — needed for count assertions). */
+  findAllElements?(query: ElementQuery): { id: string }[];
+  /** Get element bounding rect (optional — needed for spatial assertions). */
+  getElementRect?(id: string): { x: number; y: number; width: number; height: number } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +152,36 @@ async function handleWaitAfter(
       throw new Error(
         `Timed out waiting for element to vanish after ${timeout}ms`,
       );
+    }
+
+    case "change": {
+      if (!wait.query) break;
+      const changeDeadline = Date.now() + timeout;
+      const initialPresent = executor.findElement(wait.query) !== null;
+      while (Date.now() < changeDeadline) {
+        const nowPresent = executor.findElement(wait.query) !== null;
+        if (nowPresent !== initialPresent) return;
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
+      throw new Error(`Timed out waiting for change after ${timeout}ms`);
+    }
+
+    case "stable": {
+      if (!wait.query) break;
+      const stableDeadline = Date.now() + timeout;
+      const quietMs = (wait as { quietPeriodMs?: number }).quietPeriodMs ?? 500;
+      let lastPresent = executor.findElement(wait.query) !== null;
+      let lastChange = Date.now();
+      while (Date.now() < stableDeadline) {
+        const nowPresent = executor.findElement(wait.query) !== null;
+        if (nowPresent !== lastPresent) {
+          lastPresent = nowPresent;
+          lastChange = Date.now();
+        }
+        if (Date.now() - lastChange >= quietMs) return;
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
+      throw new Error(`Timed out waiting for stable after ${timeout}ms`);
     }
   }
 }

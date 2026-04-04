@@ -58,7 +58,7 @@ export interface TransitionAction {
   action: string;
   params?: Record<string, unknown>;
   waitAfter?: {
-    type: "idle" | "element" | "time" | "vanish";
+    type: "idle" | "element" | "time" | "vanish" | "change" | "stable";
     query?: ElementQuery;
     ms?: number;
     timeout?: number;
