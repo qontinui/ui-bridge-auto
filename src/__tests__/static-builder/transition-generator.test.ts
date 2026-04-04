@@ -64,10 +64,12 @@ describe("generateTransitions", () => {
     expect(toSettings!.name).toBe("Sidebar → Settings");
     expect(toSettings!.activateStates).toEqual(["tab-settings"]);
     expect(toSettings!.pathCost).toBe(5.0);
-    // fromStates should include all OTHER non-blocking states
-    expect(toSettings!.fromStates).toContain("tab-home");
-    expect(toSettings!.fromStates).toContain("tab-logs");
-    expect(toSettings!.fromStates).not.toContain("tab-settings");
+    // fromStates should be the global layout state (sidebar)
+    expect(toSettings!.fromStates).toEqual(["global-layout"]);
+    // exitStates should include all OTHER tab states
+    expect(toSettings!.exitStates).toContain("tab-home");
+    expect(toSettings!.exitStates).toContain("tab-logs");
+    expect(toSettings!.exitStates).not.toContain("tab-settings");
   });
 
   it("excludes blocking states from sidebar transitions", () => {

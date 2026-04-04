@@ -165,14 +165,20 @@ function generateInPageTransitions(
 // ---------------------------------------------------------------------------
 
 /**
- * Generate sidebar transitions for graph connectivity.
+ * Generate sidebar transitions for navigation between pages.
  *
- * Every non-blocking tab state gets a sidebar transition from all other
- * non-blocking states. The sidebar is always present (it's a global layout
- * element), so these transitions are always available.
+ * The sidebar is a persistent UI element (global-layout state) that is
+ * always active. Clicking a sidebar nav item activates the target page
+ * state and deactivates the current page state.
  *
- * This guarantees the graph is connected: any state can reach any other
- * state via the sidebar, even if no direct in-page transition exists.
+ * Each transition has:
+ * - fromStates: ["global-layout"] — the sidebar must be visible
+ * - activateStates: [targetId] — the page to navigate to
+ * - exitStates: all other tab states — deactivates the previous page
+ *
+ * The pathfinder sees: active = {global-layout, tab-current}. The sidebar
+ * transition fires because global-layout is active. After execution:
+ * tab-current exits, tab-target activates → {global-layout, tab-target}.
  */
 function generateSidebarTransitions(
   input: TransitionGeneratorInput,
@@ -180,7 +186,7 @@ function generateSidebarTransitions(
 ): TransitionDefinition[] {
   const transitions: TransitionDefinition[] = [];
 
-  // Only tab states (not app states or branch variants)
+  // Only base tab states (not app states or branch variants)
   const tabStates = input.stateIds.filter(
     (id) =>
       id.startsWith("tab-") &&
@@ -188,15 +194,10 @@ function generateSidebarTransitions(
       !input.blockingStateIds.has(id),
   );
 
-  // Non-blocking states that can use the sidebar
-  const nonBlockingStates = input.stateIds.filter(
-    (id) => !input.blockingStateIds.has(id),
-  );
+  const globalStateId = "global-layout";
 
   for (const targetId of tabStates) {
     const targetName = input.stateNames.get(targetId) ?? targetId;
-
-    // Extract the route ID from state ID for the nav item query
     const routeId = targetId.replace(/^tab-/, "");
 
     const navItemQuery: ElementQuery = {
@@ -207,14 +208,12 @@ function generateSidebarTransitions(
       },
     };
 
-    // All non-blocking states can reach this target via sidebar
-    // We use a single transition with fromStates listing all sources
     transitions.push({
       id: sidebarTransitionId(targetId),
       name: sidebarTransitionName(targetName),
-      fromStates: nonBlockingStates.filter((id) => id !== targetId),
+      fromStates: [globalStateId],
       activateStates: [targetId],
-      exitStates: [], // exitStates computed dynamically at runtime
+      exitStates: tabStates.filter((id) => id !== targetId),
       actions: [
         {
           target: navItemQuery,

@@ -318,17 +318,19 @@ describe("Static Builder Pipeline — Integration", () => {
       blockingStateIds: new Set(),
     });
 
-    // Every state should be reachable from every other state via sidebar
+    // Every tab state should have a sidebar transition from global-layout
     for (const target of stateIds) {
       const sidebarToTarget = transitions.find(
         (t) => t.id === `sidebar--to--${target}`,
       );
       expect(sidebarToTarget).toBeDefined();
 
-      // All other states should be in fromStates
-      for (const source of stateIds) {
-        if (source !== target) {
-          expect(sidebarToTarget!.fromStates).toContain(source);
+      // fromStates should be the global layout state
+      expect(sidebarToTarget!.fromStates).toEqual(["global-layout"]);
+      // exitStates should include all other tab states
+      for (const other of stateIds) {
+        if (other !== target) {
+          expect(sidebarToTarget!.exitStates).toContain(other);
         }
       }
     }
