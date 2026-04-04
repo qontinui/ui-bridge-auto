@@ -26,7 +26,6 @@ import {
   transitionName,
   sidebarTransitionId,
   sidebarTransitionName,
-  stateName,
 } from "./id-generator";
 
 // ---------------------------------------------------------------------------

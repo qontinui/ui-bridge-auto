@@ -35,7 +35,7 @@ export class DefaultDOMExecutor implements ActionExecutorLike {
     // 1. Try matching against registry elements
     const elements = this.registry.getAllElements();
     for (const el of elements) {
-      if (matchesQuery(el, query)) {
+      if (matchesQuery(el, query).matches) {
         return { id: el.id };
       }
     }
@@ -79,7 +79,7 @@ export class DefaultDOMExecutor implements ActionExecutorLike {
   findAllElements(query: ElementQuery): { id: string }[] {
     const results: { id: string }[] = [];
     for (const el of this.registry.getAllElements()) {
-      if (matchesQuery(el, query)) {
+      if (matchesQuery(el, query).matches) {
         results.push({ id: el.id });
       }
     }

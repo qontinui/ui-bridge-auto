@@ -44,7 +44,7 @@ import {
 } from "./extraction/navigation-tracer";
 import { generateStates } from "./generation/state-generator";
 import { generateTransitions } from "./generation/transition-generator";
-import { stateId, stateName } from "./generation/id-generator";
+import { stateId } from "./generation/id-generator";
 import { enhanceWithAI } from "./enhancement/ai-analyzer";
 import type {
   AIConfig,
