@@ -56,6 +56,8 @@ import type {
   ExecutionResult,
 } from "../execution/graph-executor";
 import { GraphExecutor } from "../execution/graph-executor";
+import { ElementHighlightManager } from "../visual/element-highlight";
+import type { ActionType } from "../types/transition";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -73,6 +75,10 @@ export interface EngineConfig {
   enableReliabilityTracking?: boolean;
   /** Enable self-healing via error classification and element relocation (default true). */
   enableHealing?: boolean;
+  /** Enable visual highlights during automation (default false). */
+  enableHighlights?: boolean;
+  /** Custom highlight manager. Auto-created when enableHighlights is true and this is omitted. */
+  highlightManager?: ElementHighlightManager;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,6 +104,9 @@ export class AutomationEngine {
   private readonly navigationStrategy: SearchStrategy;
   private readonly enableReliabilityTracking: boolean;
   private readonly enableHealing: boolean;
+  private readonly enableHighlights: boolean;
+  /** Highlight manager for visual feedback during automation. */
+  readonly highlightManager: ElementHighlightManager | null;
 
   constructor(config: EngineConfig) {
     this.registry = config.registry;
@@ -105,6 +114,7 @@ export class AutomationEngine {
     this.navigationStrategy = config.navigationStrategy ?? "dijkstra";
     this.enableReliabilityTracking = config.enableReliabilityTracking ?? true;
     this.enableHealing = config.enableHealing ?? true;
+    this.enableHighlights = config.enableHighlights ?? false;
 
     this.stateMachine = new StateMachine();
     this.stateDetector = new StateDetector(this.stateMachine, this.registry);
@@ -113,6 +123,9 @@ export class AutomationEngine {
     this.recorder = new SessionRecorder();
     this.replayEngine = new ReplayEngine(this.executor, this.registry);
     this.relocator = new ElementRelocator(this.registry);
+    this.highlightManager = this.enableHighlights
+      ? config.highlightManager ?? new ElementHighlightManager()
+      : config.highlightManager ?? null;
   }
 
   // -----------------------------------------------------------------------
@@ -188,6 +201,14 @@ export class AutomationEngine {
             if (this.enableHealing) {
               const alt = this.relocator.findAlternative(action.target);
               if (alt) {
+                // Highlight the relocated element before action
+                if (this.highlightManager && this.enableHighlights) {
+                  this.highlightManager.highlightAction(
+                    alt.element.id,
+                    action.action as ActionType,
+                    this.registry,
+                  );
+                }
                 await this.executor.executeAction(
                   alt.element.id,
                   action.action,
@@ -198,6 +219,14 @@ export class AutomationEngine {
             }
             throw new Error(
               `Element not found for transition "${tr.name}" action`,
+            );
+          }
+          // Highlight element before action
+          if (this.highlightManager && this.enableHighlights) {
+            this.highlightManager.highlightAction(
+              found.id,
+              action.action as ActionType,
+              this.registry,
             );
           }
           await this.executor.executeAction(found.id, action.action, action.params);
@@ -378,6 +407,21 @@ export class AutomationEngine {
    * Records actions to the active recording session if one is active.
    */
   async executeSequence(steps: ActionStep[]): Promise<ActionResult[]> {
+    // Highlight each step's target before execution
+    if (this.highlightManager && this.enableHighlights) {
+      for (const step of steps) {
+        const elements = this.registry.getAllElements();
+        const found = findFirst(elements, step.target);
+        if (found) {
+          this.highlightManager.highlightAction(
+            found.id,
+            step.action as ActionType,
+            this.registry,
+          );
+        }
+      }
+    }
+
     const results = await executeSequence(
       steps,
       this.executor,
@@ -480,6 +524,7 @@ export class AutomationEngine {
   /** Dispose all subsystems, stopping the detector and recorder. */
   dispose(): void {
     this.stateDetector.dispose();
+    this.highlightManager?.dismissAll();
     if (this.recorder.isRecording) {
       try {
         this.recorder.stop();

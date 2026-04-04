@@ -499,3 +499,31 @@ export {
   enhanceWithClient,
   createMockClient,
 } from "./static-builder";
+
+// Visual — highlights, OCR assertions, coordinate translation, screenshot comparison
+export {
+  ElementHighlightManager,
+  ACTION_HIGHLIGHT_COLORS,
+  extractElementText,
+  assertTextInElement,
+  type TextExtractionResult,
+  CoordinateTranslator,
+  type WindowLike,
+  InMemoryBaselineStore,
+  ScreenshotAssertionManager,
+  type HighlightOptions,
+  type ActiveHighlight,
+  type IOCRProvider,
+  type TextRegion,
+  type TextMatch,
+  type TextAssertionOptions,
+  type TextAssertionResult,
+  type CoordinatePoint,
+  type CoordinateSpace,
+  type CoordinateTranslation,
+  type ScrollInfo,
+  type FrameOffset,
+  type BaselineStore,
+  type ScreenshotAssertionOptions,
+  type ScreenshotAssertionResult,
+} from "./visual";
