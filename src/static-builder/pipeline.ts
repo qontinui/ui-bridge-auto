@@ -30,6 +30,7 @@ import {
 import {
   extractGlobalLayout,
   type GlobalLayout,
+  type AppBranch,
 } from "./extraction/global-layout-extractor";
 import {
   enumerateBranches,
@@ -74,7 +75,7 @@ export interface PipelineContext {
   /** Extracted elements per route ID. */
   routeElements: Map<string, ExtractedElement[]>;
   /** Global layout data (always-present elements). */
-  globalLayout: GlobalLayout | undefined;
+  appShellElements: ExtractedElement[];
   /** Branch enumerations per route ID. */
   routeBranches: Map<string, BranchEnumeration>;
   /** Traced navigation transitions per route ID. */
@@ -92,8 +93,8 @@ export interface BuildResult {
   routes: RouteEntry[];
   /** Extracted elements per route (for diagnostics). */
   routeElements: Map<string, ExtractedElement[]>;
-  /** Global layout elements (for diagnostics). */
-  globalElements: ExtractedElement[];
+  /** App shell elements present in all routes (for diagnostics). */
+  appShellElements: ExtractedElement[];
   /** Branch enumerations per route (for diagnostics). */
   routeBranches: Map<string, BranchEnumeration>;
   /** Traced transitions per route (for diagnostics). */
@@ -152,7 +153,7 @@ export function buildStateMachine(config: BuilderConfig): BuildResult {
       transitions: [],
       routes: [],
       routeElements: new Map(),
-      globalElements: [],
+      appShellElements: [],
       routeBranches: new Map(),
       tracedTransitions: [],
       uncertain,
@@ -179,7 +180,7 @@ export function buildStateMachine(config: BuilderConfig): BuildResult {
       transitions: [],
       routes: [],
       routeElements: new Map(),
-      globalElements: [],
+      appShellElements: [],
       routeBranches: new Map(),
       tracedTransitions: [],
       uncertain,
@@ -252,15 +253,30 @@ export function buildStateMachine(config: BuilderConfig): BuildResult {
     routeElements.set(primaryId, allElements);
   }
 
-  // Stage 5: Extract global layout elements
-  let globalLayout: GlobalLayout | undefined;
+  // Stage 5: Extract app shell elements and add to every route.
+  // App shell elements (sidebar, header, etc.) are always present regardless
+  // of route. By adding them to every route's element list, the co-occurrence
+  // grouper naturally creates a state for them (identical presence signature).
+  // No special "global" handling — the algorithm is general.
+  let appBranches: AppBranch[] = [];
+  let appShellElements: ExtractedElement[] = [];
   if (appShellFile) {
-    globalLayout = extractGlobalLayout(
+    const globalLayout = extractGlobalLayout(
       appShellFile,
       resolved.routeFunction,
       project,
       resolved.maxComponentDepth,
     );
+    appShellElements = globalLayout.globalElements;
+    // Add app shell elements to every route's element list.
+    // The co-occurrence grouper will create a state for elements that
+    // appear in all routes (identical presence signature).
+    for (const route of routes) {
+      const primaryId = route.caseValues[0];
+      const existing = routeElements.get(primaryId) ?? [];
+      routeElements.set(primaryId, [...existing, ...appShellElements]);
+    }
+    appBranches = globalLayout.appBranches;
   }
 
   // Stage 6: Enumerate conditional branches per route
@@ -436,9 +452,8 @@ export function buildStateMachine(config: BuilderConfig): BuildResult {
   const states = generateStates({
     routes,
     routeElements,
-    globalElements: globalLayout?.globalElements ?? [],
     routeBranches,
-    appBranches: globalLayout?.appBranches ?? [],
+    appBranches,
     routeNameOverrides,
   });
 
@@ -491,7 +506,7 @@ export function buildStateMachine(config: BuilderConfig): BuildResult {
     transitions,
     routes,
     routeElements,
-    globalElements: globalLayout?.globalElements ?? [],
+    appShellElements: appShellElements ?? [],
     routeBranches,
     tracedTransitions: allTracedTransitions,
     uncertain,

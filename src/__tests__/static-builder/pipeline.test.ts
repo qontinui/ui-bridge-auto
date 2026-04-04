@@ -196,11 +196,15 @@ describe("Static Builder Pipeline — Integration", () => {
     expect(globalLayout.appBranches.length).toBe(1); // login branch
     expect(globalLayout.appBranches[0].label).toBe("login");
 
+    // Include global elements in each route's element list
+    for (const [routeId, elements] of routeElements) {
+      routeElements.set(routeId, [...globalLayout.globalElements, ...elements]);
+    }
+
     // Stage 8: Generate states
     const states = generateStates({
       routes,
       routeElements,
-      globalElements: globalLayout.globalElements,
       routeBranches,
       appBranches: globalLayout.appBranches,
     });
@@ -291,7 +295,6 @@ describe("Static Builder Pipeline — Integration", () => {
     const states = generateStates({
       routes,
       routeElements: new Map(routes.map((r) => [r.caseValues[0], []])),
-      globalElements: [],
       routeBranches: new Map(),
       appBranches: [],
     });

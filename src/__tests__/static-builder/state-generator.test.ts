@@ -22,33 +22,37 @@ function makeRoute(id: string, componentName: string): RouteEntry {
 
 describe("generateStates", () => {
   it("separates global and route elements into non-overlapping states", () => {
+    const navElement = makeElement({ role: "navigation" });
     const states = generateStates({
       routes: [
         makeRoute("home", "HomePage"),
         makeRoute("settings", "SettingsPage"),
       ],
       routeElements: new Map([
-        ["home", [makeElement({ role: "main" })]],
-        ["settings", [makeElement({ role: "form" })]],
+        ["home", [navElement, makeElement({ role: "main" })]],
+        ["settings", [navElement, makeElement({ role: "form" })]],
       ]),
-      globalElements: [makeElement({ role: "navigation" })],
       routeBranches: new Map(),
       appBranches: [],
     });
 
-    // 3 states: global + home + settings (elements are non-overlapping)
+    // 3 states: shared nav (all-routes) + home + settings
     expect(states.length).toBe(3);
 
-    const globalState = states.find((s) => s.id === "global-layout");
-    expect(globalState).toBeDefined();
-    expect(globalState!.requiredElements).toHaveLength(1);
-    expect(globalState!.requiredElements[0].role).toBe("navigation");
+    // The navigation element appears in both routes → co-occurrence grouper
+    // extracts it into its own state (shared or global-layout)
+    const navState = states.find(
+      (s) =>
+        s.requiredElements.some((e) => e.role === "navigation"),
+    );
+    expect(navState).toBeDefined();
+    expect(navState!.requiredElements).toHaveLength(1);
 
     const home = states.find((s) => s.id === "tab-home");
     expect(home).toBeDefined();
     expect(home!.name).toBe("Home");
     expect(home!.requiredElements.some((e) => e.role === "main")).toBe(true);
-    // Global elements NOT in route state
+    // Navigation element extracted into its own state, not in route state
     expect(home!.requiredElements.some((e) => e.role === "navigation")).toBe(false);
 
     const settings = states.find((s) => s.id === "tab-settings");
@@ -61,7 +65,6 @@ describe("generateStates", () => {
     const states = generateStates({
       routes: [makeRoute("active", "ActiveDashboardPage")],
       routeElements: new Map([["active", [makeElement({ role: "main" })]]]),
-      globalElements: [],
       routeBranches: new Map(),
       appBranches: [],
     });
@@ -76,7 +79,6 @@ describe("generateStates", () => {
     const states = generateStates({
       routes: [makeRoute("active", "ActiveDashboardPage")],
       routeElements: new Map([["active", [makeElement({ role: "main" })]]]),
-      globalElements: [],
       routeBranches: new Map(),
       appBranches: [],
     });
@@ -104,7 +106,6 @@ describe("generateStates", () => {
     const states = generateStates({
       routes: [makeRoute("active", "ActivePage")],
       routeElements: new Map([["active", [makeElement({ role: "main" })]]]),
-      globalElements: [],
       routeBranches: new Map([["active", enumeration]]),
       appBranches: [],
     });
@@ -125,7 +126,6 @@ describe("generateStates", () => {
     const states = generateStates({
       routes: [],
       routeElements: new Map(),
-      globalElements: [makeElement({ role: "navigation" })],
       routeBranches: new Map(),
       appBranches: [
         {
@@ -136,12 +136,11 @@ describe("generateStates", () => {
       ],
     });
 
-    // Only the app-level state (no global state since there are no routes)
+    // Only the app-level state (no routes to generate tab states)
     const login = states.find((s) => s.id === "app-login");
     expect(login).toBeDefined();
     expect(login!.name).toBe("Login Screen");
     expect(login!.blocking).toBe(true);
-    expect(login!.excludedElements).toBeDefined();
     expect(login!.pathCost).toBe(10.0);
   });
 
@@ -156,7 +155,6 @@ describe("generateStates", () => {
         },
       ],
       routeElements: new Map([["settings", [makeElement({ role: "form" })]]]),
-      globalElements: [],
       routeBranches: new Map(),
       appBranches: [],
     });
@@ -174,7 +172,6 @@ describe("generateStates", () => {
     const states = generateStates({
       routes: [makeRoute("logs", "LogsTab")],
       routeElements: new Map([["logs", [makeElement({ role: "log" })]]]),
-      globalElements: [],
       routeBranches: new Map(),
       appBranches: [],
       routeGroups: new Map([["logs", "monitoring"]]),
@@ -192,7 +189,6 @@ describe("generateStates", () => {
     const states = generateStates({
       routes: [makeRoute("page", "PageComponent")],
       routeElements: new Map([["page", elements]]),
-      globalElements: [],
       routeBranches: new Map(),
       appBranches: [],
     });
@@ -215,7 +211,6 @@ describe("generateStates", () => {
         ["settings", [makeElement({ role: "form" }), sharedElement]],
         ["terminal", [makeElement({ role: "log" })]],
       ]),
-      globalElements: [],
       routeBranches: new Map(),
       appBranches: [],
     });
@@ -231,16 +226,16 @@ describe("generateStates", () => {
   });
 
   it("ensures no element appears in more than one state", () => {
+    const navElement = makeElement({ role: "navigation" });
     const states = generateStates({
       routes: [
         makeRoute("home", "HomePage"),
         makeRoute("settings", "SettingsPage"),
       ],
       routeElements: new Map([
-        ["home", [makeElement({ role: "main" })]],
-        ["settings", [makeElement({ role: "form" })]],
+        ["home", [navElement, makeElement({ role: "main" })]],
+        ["settings", [navElement, makeElement({ role: "form" })]],
       ]),
-      globalElements: [makeElement({ role: "navigation" })],
       routeBranches: new Map(),
       appBranches: [],
     });

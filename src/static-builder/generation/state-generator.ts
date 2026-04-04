@@ -46,10 +46,12 @@ const SKIP_FOR_NAMING = new Set([
 export interface StateGeneratorInput {
   /** Route entries from the route extractor. */
   routes: RouteEntry[];
-  /** Extracted elements per route ID. */
+  /**
+   * Extracted elements per route ID. App shell elements (sidebar, header)
+   * should be included in EVERY route's list — the co-occurrence grouper
+   * will naturally create a state for them.
+   */
   routeElements: Map<string, ExtractedElement[]>;
-  /** Global layout elements (always present). */
-  globalElements: ExtractedElement[];
   /** Branch enumerations per route ID. */
   routeBranches: Map<string, BranchEnumeration>;
   /** App-level blocking states (login, loading, etc.). */
@@ -74,7 +76,6 @@ export interface StateGeneratorInput {
 export function generateStates(input: StateGeneratorInput): StateDefinition[] {
   const states: StateDefinition[] = [];
 
-  const globalQueries = input.globalElements.map((el) => el.query);
   const routeIds = input.routes.map((r) => r.caseValues[0]);
 
   // Build route metadata for naming
@@ -90,17 +91,10 @@ export function generateStates(input: StateGeneratorInput): StateDefinition[] {
 
   // ---- Step 1: Build presence map ----
   // For each element (keyed by serialized query), track which routes it appears in.
+  // App shell elements are already included in every route's element list by the
+  // pipeline, so they naturally get the all-routes signature.
   const presenceMap = new Map<string, { query: ElementQuery; routeIds: Set<string> }>();
 
-  // Global elements appear in ALL routes
-  for (const q of globalQueries) {
-    const key = JSON.stringify(q);
-    if (!presenceMap.has(key)) {
-      presenceMap.set(key, { query: q, routeIds: new Set(routeIds) });
-    }
-  }
-
-  // Route-specific elements appear in their route
   for (const route of input.routes) {
     const routeId = route.caseValues[0];
     const routeElems = input.routeElements.get(routeId) ?? [];
@@ -234,13 +228,18 @@ export function generateStates(input: StateGeneratorInput): StateDefinition[] {
   }
 
   // ---- Step 6: App-level blocking states ----
+  // Blocking states (login, loading) exclude elements that appear in all routes,
+  // since those elements indicate the normal app layout is active.
+  const allRoutesSig = [...routeIds].sort().join("|");
+  const allRoutesElements = signatureGroups.get(allRoutesSig) ?? [];
+
   for (const appBranch of input.appBranches) {
     const appQueries = appBranch.elements.map((el) => el.query);
     states.push({
       id: appStateId(appBranch.label),
       name: formatAppStateName(appBranch.label),
       requiredElements: appQueries,
-      excludedElements: globalQueries.length > 0 ? globalQueries : undefined,
+      excludedElements: allRoutesElements.length > 0 ? allRoutesElements : undefined,
       blocking: appBranch.blocking,
       group: "app",
       pathCost: 10.0,
