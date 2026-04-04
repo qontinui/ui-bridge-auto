@@ -23,6 +23,12 @@ export interface ActionExecutorLike {
   findAllElements?(query: ElementQuery): { id: string }[];
   /** Get element bounding rect (optional — needed for spatial assertions). */
   getElementRect?(id: string): { x: number; y: number; width: number; height: number } | null;
+  /**
+   * Batch-find multiple elements at once. Returns a Map from serialized query
+   * key to result. More efficient than sequential findElement calls.
+   * Default implementation falls back to sequential findElement.
+   */
+  findElements?(queries: ElementQuery[]): Map<string, { id: string } | null>;
 }
 
 // ---------------------------------------------------------------------------

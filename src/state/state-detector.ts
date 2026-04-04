@@ -45,7 +45,8 @@ export class StateDetector {
     this.machine = machine;
     this.registry = registry;
 
-    // Subscribe to registry events
+    // Subscribe to registry events — purely event-driven, no polling.
+    // Initial state detection is handled by engine.detectActiveStates().
     const handler = () => this.scheduleEvaluation();
 
     this.unsubscribes.push(
@@ -53,12 +54,6 @@ export class StateDetector {
       registry.on("element:unregistered", handler),
       registry.on("element:stateChanged", handler),
     );
-
-    // Safety-net reconciliation every 5 seconds
-    this.reconcileTimer = setInterval(() => this.evaluate(), 5_000);
-
-    // Initial evaluation
-    this.evaluate();
   }
 
   // -----------------------------------------------------------------------
@@ -124,10 +119,14 @@ export class StateDetector {
     },
     elements: QueryableElement[],
   ): boolean {
-    // ALL required elements must have at least one match
-    for (const query of def.requiredElements) {
-      const found = elements.some((el) => matchesQuery(el, query).matches);
-      if (!found) return false;
+    // A state is active if ANY of its required elements matches.
+    // Elements in a state always co-occur (by co-occurrence analysis),
+    // so finding one implies all are present.
+    if (def.requiredElements.length > 0) {
+      const anyFound = def.requiredElements.some((query) =>
+        elements.some((el) => matchesQuery(el, query).matches),
+      );
+      if (!anyFound) return false;
     }
 
     // ANY excluded element match means state is NOT active

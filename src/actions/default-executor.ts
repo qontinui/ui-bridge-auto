@@ -87,6 +87,45 @@ export class DefaultDOMExecutor implements ActionExecutorLike {
   }
 
   /**
+   * Batch-find multiple elements at once. Single pass over registry elements
+   * checks all queries simultaneously, then falls back to DOM queries for
+   * any unmatched attribute-based queries.
+   */
+  findElements(queries: ElementQuery[]): Map<string, { id: string } | null> {
+    const results = new Map<string, { id: string } | null>();
+    const keys = queries.map((q) => JSON.stringify(q));
+    const elements = this.registry.getAllElements();
+
+    // Single pass: check each registry element against all unresolved queries
+    const unresolved = new Set(keys.map((_, i) => i));
+    for (const el of elements) {
+      for (const idx of unresolved) {
+        if (matchesQuery(el, queries[idx]).matches) {
+          results.set(keys[idx], { id: el.id });
+          unresolved.delete(idx);
+        }
+      }
+      if (unresolved.size === 0) break;
+    }
+
+    // Fallback: attribute-based CSS selectors for unmatched queries
+    if (typeof document !== "undefined") {
+      for (const idx of unresolved) {
+        const query = queries[idx];
+        const key = keys[idx];
+        const found = this.findElement(query);
+        results.set(key, found);
+      }
+    } else {
+      for (const idx of unresolved) {
+        results.set(keys[idx], null);
+      }
+    }
+
+    return results;
+  }
+
+  /**
    * Get element bounding rect.
    */
   getElementRect(id: string): { x: number; y: number; width: number; height: number } | null {

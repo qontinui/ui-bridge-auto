@@ -186,6 +186,45 @@ export class AutomationEngine {
   }
 
   // -----------------------------------------------------------------------
+  // Initial state detection
+  // -----------------------------------------------------------------------
+
+  /**
+   * Detect which states are currently active by batch-finding all required
+   * elements against the live DOM. A state is active if ANY of its required
+   * elements is found (elements in a state always co-occur, so finding one
+   * implies all are present).
+   *
+   * This is a one-time operation meant to be called before automation starts.
+   * After this, the event-driven StateDetector maintains the active set.
+   */
+  detectActiveStates(): void {
+    const defs = this.stateMachine.getAllStateDefinitions();
+
+    // Collect all unique element queries across all states
+    const allQueries = defs.flatMap((d) => d.requiredElements);
+    const uniqueKeys = new Set(allQueries.map((q) => JSON.stringify(q)));
+    const uniqueQueries = [...uniqueKeys].map((k) => JSON.parse(k) as ElementQuery);
+
+    // Batch-find all elements at once
+    const found: Map<string, { id: string } | null> = this.executor.findElements
+      ? this.executor.findElements(uniqueQueries)
+      : new Map(uniqueQueries.map((q) => [JSON.stringify(q), this.executor.findElement(q)]));
+
+    // A state is active if ANY of its required elements was found
+    const active = new Set(
+      defs
+        .filter((def) =>
+          def.requiredElements.length > 0 &&
+          def.requiredElements.some((q) => found.get(JSON.stringify(q)) !== null),
+        )
+        .map((def) => def.id),
+    );
+
+    this.stateMachine.setActiveStates(active);
+  }
+
+  // -----------------------------------------------------------------------
   // State queries
   // -----------------------------------------------------------------------
 
