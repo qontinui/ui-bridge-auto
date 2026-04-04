@@ -67,18 +67,54 @@ export async function executeTransition(
 /**
  * Navigate from the current active states to the target state by computing
  * a path and executing each transition in order.
+ *
+ * By default, recovery is enabled: a failed transition triggers re-detection
+ * of the current state and re-planning from the new position, excluding
+ * transitions that already failed. Continues until the target is reached
+ * or no more paths exist.
  */
 export async function navigateToState(
   targetState: string,
   machine: StateMachine,
   transitions: TransitionDefinition[],
   actionExecutor: ActionExecutorLike,
+  options?: { recovery?: boolean },
 ): Promise<void> {
-  const currentStates = machine.getActiveStates();
-  const path = findPath(currentStates, targetState, transitions);
+  const recovery = options?.recovery !== false; // default true
+  let currentStates = machine.getActiveStates();
+  let path = findPath(currentStates, targetState, transitions);
+  const failedTransitionIds = new Set<string>();
 
-  for (const transition of path) {
-    await executeTransition(transition, actionExecutor);
+  while (path.length > 0) {
+    const transition = path[0];
+
+    try {
+      await executeTransition(transition, actionExecutor);
+      path.shift();
+    } catch (err) {
+      failedTransitionIds.add(transition.id);
+
+      if (recovery) {
+        // Re-detect current state from the machine
+        currentStates = machine.getActiveStates();
+
+        // Already at target?
+        if (currentStates.has(targetState)) {
+          return;
+        }
+
+        // Re-plan from current state, excluding failed transitions
+        const available = transitions.filter((t) => !failedTransitionIds.has(t.id));
+        try {
+          path = findPath(currentStates, targetState, available);
+          continue;
+        } catch {
+          // No path found — throw the original error
+        }
+      }
+
+      throw err;
+    }
   }
 }
 

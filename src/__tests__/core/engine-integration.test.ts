@@ -220,6 +220,192 @@ describe("navigateToState", () => {
     const rate = engine.reliabilityTracker.successRate("t-login");
     expect(rate).toBe(1.0);
   });
+
+  it("recovers mid-path by re-planning via alternate transition", async () => {
+    const btn = createButton("Start");
+    const link = createLink("Go", "/next");
+    registry.addElement(btn);
+    registry.addElement(link);
+    executor.registerElement("role:button", btn.id);
+    executor.registerElement("role:link", link.id);
+
+    engine.defineStates([
+      {
+        id: "stateA",
+        name: "State A",
+        requiredElements: [{ role: "button" }],
+      },
+      {
+        id: "stateB",
+        name: "State B",
+        requiredElements: [{ role: "heading" }],
+      },
+    ]);
+
+    // Two transitions to the same target — first one (lower cost) will be
+    // tried first, fails, then recovery picks the second one.
+    engine.defineTransitions([
+      {
+        id: "t-primary",
+        name: "Primary Route",
+        fromStates: ["stateA"],
+        activateStates: ["stateB"],
+        exitStates: ["stateA"],
+        actions: [{ target: { role: "button" }, action: "click" }],
+        pathCost: 1,
+      },
+      {
+        id: "t-alternate",
+        name: "Alternate Route",
+        fromStates: ["stateA"],
+        activateStates: ["stateB"],
+        exitStates: ["stateA"],
+        actions: [{ target: { role: "link" }, action: "click" }],
+        pathCost: 2,
+      },
+    ]);
+
+    // Make the primary route fail, alternate succeeds
+    let callCount = 0;
+    const originalExec = executor.executeAction.bind(executor);
+    executor.executeAction = async (id, action, params) => {
+      callCount++;
+      if (id === btn.id) throw new Error("primary route failed");
+      return originalExec(id, action, params);
+    };
+
+    const result = await engine.navigateToState("stateB");
+
+    // Recovery should have excluded t-primary and used t-alternate
+    expect(result).toBeDefined();
+    expect(callCount).toBe(2); // first failed, second succeeded
+  });
+
+  it("recovers when target is already reached after partial progress", async () => {
+    const btn = createButton("Go");
+    const heading = createInput("Title");
+    registry.addElement(btn);
+    executor.registerElement("role:button", btn.id);
+
+    engine.defineStates([
+      {
+        id: "start",
+        name: "Start",
+        requiredElements: [{ role: "button" }],
+      },
+      {
+        id: "target",
+        name: "Target",
+        requiredElements: [{ role: "textbox" }],
+      },
+    ]);
+
+    engine.defineTransitions([
+      {
+        id: "t-go",
+        name: "Go to Target",
+        fromStates: ["start"],
+        activateStates: ["target"],
+        exitStates: ["start"],
+        actions: [{ target: { role: "button" }, action: "click" }],
+      },
+    ]);
+
+    // The action "succeeds" but we make it throw to trigger recovery.
+    // After recovery, we add the target-required element so the state detector
+    // finds the target is active.
+    let threw = false;
+    const originalExec = executor.executeAction.bind(executor);
+    executor.executeAction = async (id, action, params) => {
+      if (!threw) {
+        threw = true;
+        // Simulate: action partially worked, target element now exists
+        registry.addElement(heading);
+        engine.stateDetector.evaluate();
+        throw new Error("transient");
+      }
+      return originalExec(id, action, params);
+    };
+
+    const result = await engine.navigateToState("target");
+
+    // Recovery detected target is active, no re-plan needed
+    expect(result).toBeDefined();
+  });
+
+  it("throws when all paths exhausted", async () => {
+    const btn = createButton("Fail");
+    registry.addElement(btn);
+    executor.registerElement("role:button", btn.id);
+
+    engine.defineStates([
+      {
+        id: "here",
+        name: "Here",
+        requiredElements: [{ role: "button" }],
+      },
+      {
+        id: "there",
+        name: "There",
+        requiredElements: [{ role: "heading" }],
+      },
+    ]);
+
+    engine.defineTransitions([
+      {
+        id: "t-fail",
+        name: "Always Fails",
+        fromStates: ["here"],
+        activateStates: ["there"],
+        exitStates: ["here"],
+        actions: [{ target: { role: "button" }, action: "click" }],
+      },
+    ]);
+
+    // Make action always fail — only one transition exists, so recovery
+    // excludes it and no more paths remain.
+    executor.executeAction = async () => { throw new Error("always fails"); };
+
+    await expect(
+      engine.navigateToState("there"),
+    ).rejects.toThrow("always fails");
+  });
+
+  it("can disable recovery with recovery: false", async () => {
+    const btn = createButton("NoRecover");
+    registry.addElement(btn);
+    executor.registerElement("role:button", btn.id);
+
+    engine.defineStates([
+      {
+        id: "origin",
+        name: "Origin",
+        requiredElements: [{ role: "button" }],
+      },
+      {
+        id: "dest",
+        name: "Dest",
+        requiredElements: [{ role: "heading" }],
+      },
+    ]);
+
+    engine.defineTransitions([
+      {
+        id: "t-no-recover",
+        name: "No Recover",
+        fromStates: ["origin"],
+        activateStates: ["dest"],
+        exitStates: ["origin"],
+        actions: [{ target: { role: "button" }, action: "click" }],
+      },
+    ]);
+
+    executor.executeAction = async () => { throw new Error("fail"); };
+
+    await expect(
+      engine.navigateToState("dest", { recovery: false }),
+    ).rejects.toThrow("fail");
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -157,8 +157,8 @@ export class AutomationEngine {
     target: string,
     options?: NavigationOptions,
   ): Promise<NavigationResult> {
-    const activeStates = this.stateMachine.getActiveStates();
     const transitions = this.stateMachine.getTransitionDefinitions();
+    const recovery = options?.recovery !== false; // default true
 
     const navOptions: NavigationOptions = {
       strategy: this.navigationStrategy,
@@ -168,10 +168,15 @@ export class AutomationEngine {
         : options?.reliability,
     };
 
-    const result = navigate(activeStates, target, transitions, navOptions);
+    const initialStates = this.stateMachine.getActiveStates();
+    let result = navigate(initialStates, target, transitions, navOptions);
+    let remainingPath = [...result.path];
+    const executedTransitions: typeof result.path = [];
+    // Track failed transition IDs to avoid retrying the same path.
+    const failedTransitionIds = new Set<string>();
 
-    // Execute each transition in the path
-    for (const tr of result.path) {
+    while (remainingPath.length > 0) {
+      const tr = remainingPath[0];
       const startTime = Date.now();
       let success = false;
 
@@ -203,41 +208,50 @@ export class AutomationEngine {
         }
         success = true;
       } catch (err) {
-        if (this.enableHealing) {
-          const classified = classifyError(
-            err instanceof Error ? err : new Error(String(err)),
+        if (this.enableReliabilityTracking) {
+          this.reliabilityTracker.record(tr.id, false, Date.now() - startTime);
+        }
+
+        failedTransitionIds.add(tr.id);
+
+        // Attempt recovery: re-detect state and re-plan, avoiding failed transitions.
+        if (recovery) {
+          this.stateDetector.evaluate();
+          const currentStates = this.stateMachine.getActiveStates();
+
+          // Already at target? Partial progress may have gotten us there.
+          if (currentStates.has(target)) {
+            break;
+          }
+
+          // Re-plan from current state, excluding transitions that already failed.
+          const availableTransitions = transitions.filter(
+            (t) => !failedTransitionIds.has(t.id),
           );
-          if (!classified.retryable) {
-            if (this.enableReliabilityTracking) {
-              this.reliabilityTracker.record(
-                tr.id,
-                false,
-                Date.now() - startTime,
-              );
-            }
-            throw err;
+          const newResult = navigate(currentStates, target, availableTransitions, navOptions);
+          if (newResult.path.length > 0) {
+            remainingPath = [...newResult.path];
+            continue;
           }
         }
-        if (this.enableReliabilityTracking) {
-          this.reliabilityTracker.record(
-            tr.id,
-            false,
-            Date.now() - startTime,
-          );
-        }
+
+        // No recovery possible — propagate error
         throw err;
       }
 
       if (this.enableReliabilityTracking) {
-        this.reliabilityTracker.record(
-          tr.id,
-          success,
-          Date.now() - startTime,
-        );
+        this.reliabilityTracker.record(tr.id, success, Date.now() - startTime);
       }
+
+      executedTransitions.push(tr);
+      remainingPath.shift();
     }
 
-    return result;
+    // Return result with the full set of executed transitions
+    return {
+      ...result,
+      path: executedTransitions,
+    };
   }
 
   // -----------------------------------------------------------------------

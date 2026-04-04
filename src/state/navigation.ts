@@ -39,6 +39,8 @@ export interface NavigationOptions {
   maxDepth?: number;
   /** Maximum time for pathfinding in milliseconds. */
   timeout?: number;
+  /** Whether to attempt re-planning on mid-path failure (default true). */
+  recovery?: boolean;
 }
 
 /** Result of a navigation search. */
