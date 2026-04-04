@@ -79,6 +79,59 @@ export {
   CircuitBreaker,
 } from './hooks';
 
+// DOM action implementations (single source of truth for action execution)
+export {
+  performClick,
+  performDoubleClick,
+  performRightClick,
+  performMiddleClick,
+  performType,
+  performSendKeys,
+  performClear,
+  performSelect,
+  performFocus,
+  performBlur,
+  performHover,
+  performScroll,
+  performScrollIntoView,
+  performCheck,
+  performToggle,
+  performDrag,
+  performSetValue,
+  performSubmit,
+  performReset,
+  performAutocomplete,
+  performAction,
+  type TypeParams,
+  type SendKeysParams,
+  type SelectParams,
+  type ScrollParams,
+  type ScrollIntoViewParams,
+  type DragParams,
+  type AutocompleteParams,
+} from './dom-actions';
+
+// DOM helpers
+export {
+  createMouseEvent,
+  createMouseEventAt,
+  elementFromPointSafe,
+  sleep,
+  getNativeSetter,
+  resetReactValueTracker,
+  getReactProps,
+  notifyReactValueChange,
+  findOpenDropdown,
+  findDropdownOption,
+  findScrollableElement,
+  keyToCode,
+  NON_PRINTABLE_KEYS,
+  type MouseActionParams,
+} from './dom-helpers';
+
+// Default DOM executor
+export { DefaultDOMExecutor } from './default-executor';
+
 // Extended data operations
 export {
   type StringOp,
