@@ -90,22 +90,40 @@ export function generateStates(input: StateGeneratorInput): StateDefinition[] {
   }
 
   // ---- Step 1: Build presence map ----
-  // For each element (keyed by serialized query), track which routes it appears in.
-  // App shell elements are already included in every route's element list by the
-  // pipeline, so they naturally get the all-routes signature.
+  // For each element, track which screens it appears on. A "screen" is a
+  // route + branch condition combination. Elements from all sources (route
+  // elements, branch variants, sibling elements) go through the same pipeline.
+  //
+  // The presence map key is the serialized ElementQuery. The value tracks
+  // which route IDs the element appears in. Co-occurrence grouping then
+  // creates states from elements with identical presence signatures.
   const presenceMap = new Map<string, { query: ElementQuery; routeIds: Set<string> }>();
+
+  const addToPresence = (query: ElementQuery, routeId: string) => {
+    if (!isDistinctive(query)) return;
+    const key = JSON.stringify(query);
+    const existing = presenceMap.get(key);
+    if (existing) {
+      existing.routeIds.add(routeId);
+    } else {
+      presenceMap.set(key, { query, routeIds: new Set([routeId]) });
+    }
+  };
 
   for (const route of input.routes) {
     const routeId = route.caseValues[0];
+
+    // Route elements (including sibling elements added by the pipeline)
     const routeElems = input.routeElements.get(routeId) ?? [];
-    const landmarks = selectLandmarks(routeElems);
-    for (const q of landmarks) {
-      const key = JSON.stringify(q);
-      const existing = presenceMap.get(key);
-      if (existing) {
-        existing.routeIds.add(routeId);
-      } else {
-        presenceMap.set(key, { query: q, routeIds: new Set([routeId]) });
+    for (const el of routeElems) addToPresence(el.query, routeId);
+
+    // Branch variant elements — these appear on the same route
+    const branches = input.routeBranches.get(routeId);
+    if (branches) {
+      for (const group of branches.branchGroups) {
+        for (const variant of group.variants) {
+          for (const el of variant.elements) addToPresence(el.query, routeId);
+        }
       }
     }
   }
@@ -181,31 +199,11 @@ export function generateStates(input: StateGeneratorInput): StateDefinition[] {
     }
   }
 
-  // ---- Step 4: Branch variant sub-states ----
-  // Variant elements are page-specific and belong to their own states.
-  for (const route of input.routes) {
-    const primaryId = route.caseValues[0];
-    const branches = input.routeBranches.get(primaryId);
-    const routeName = routeNameMap.get(primaryId) ?? primaryId;
-    const group = input.routeGroups?.get(primaryId);
-
-    if (branches && branches.branchGroups.length > 0) {
-      for (const branchGroup of branches.branchGroups) {
-        for (const variant of branchGroup.variants) {
-          if (variant.elements.length === 0) continue;
-
-          const variantQueries = variant.elements.map((el) => el.query);
-          states.push({
-            id: branchStateId(primaryId, variant.conditionLabel),
-            name: `${routeName} (${formatConditionLabel(variant.conditionLabel)})`,
-            requiredElements: variantQueries,
-            group,
-            pathCost: 1.5,
-          });
-        }
-      }
-    }
-  }
+  // Branch variant elements are already included in the presence map (Step 1).
+  // The co-occurrence grouper handles them: variant elements that appear in
+  // only one route get the same signature as that route's base elements,
+  // and variant elements unique to a specific branch condition get their own
+  // signature if they don't appear in other routes.
 
   // ---- Step 5: Register alias IDs on the primary state ----
   // Fall-through switch cases (e.g., "runs" and "history" rendering the same
@@ -257,15 +255,18 @@ function selectLandmarks(elements: ExtractedElement[]): ElementQuery[] {
   const landmarks: ElementQuery[] = [];
   const MAX_LANDMARKS = 8;
 
+  // Pre-filter: only consider distinctive elements
+  const distinctive = elements.filter((el) => isDistinctive(el.query));
+
   // Priority 0: data-page-id (definitive state identifier, always include)
-  for (const el of elements) {
+  for (const el of distinctive) {
     if (el.query.attributes?.["data-page-id"]) {
       landmarks.push(el.query);
     }
   }
 
   // Priority 1: Elements with role or ariaLabel (structural landmarks)
-  for (const el of elements) {
+  for (const el of distinctive) {
     if (landmarks.length >= MAX_LANDMARKS) break;
     if ((el.query.role || el.query.ariaLabel) && !el.interactive && !isDuplicate(el.query, landmarks)) {
       landmarks.push(el.query);
@@ -273,7 +274,7 @@ function selectLandmarks(elements: ExtractedElement[]): ElementQuery[] {
   }
 
   // Priority 2: Elements with data-content-role
-  for (const el of elements) {
+  for (const el of distinctive) {
     if (landmarks.length >= MAX_LANDMARKS) break;
     if (
       el.query.attributes?.["data-content-role"] &&
@@ -284,7 +285,7 @@ function selectLandmarks(elements: ExtractedElement[]): ElementQuery[] {
   }
 
   // Priority 3: Elements with unique IDs
-  for (const el of elements) {
+  for (const el of distinctive) {
     if (landmarks.length >= MAX_LANDMARKS) break;
     if (el.query.id && !isDuplicate(el.query, landmarks)) {
       landmarks.push(el.query);
@@ -292,7 +293,7 @@ function selectLandmarks(elements: ExtractedElement[]): ElementQuery[] {
   }
 
   // Priority 4: Interactive elements with aria-labels (for state uniqueness)
-  for (const el of elements) {
+  for (const el of distinctive) {
     if (landmarks.length >= MAX_LANDMARKS) break;
     if (
       el.interactive &&
@@ -310,6 +311,30 @@ function selectLandmarks(elements: ExtractedElement[]): ElementQuery[] {
 function isDuplicate(query: ElementQuery, landmarks: ElementQuery[]): boolean {
   const key = JSON.stringify(query);
   return landmarks.some((l) => JSON.stringify(l) === key);
+}
+
+/**
+ * Check if an element query is distinctive enough to identify a state.
+ * Rejects generic queries like {"tagName":"span","text":"|"} that match
+ * elements on many pages but lack identifying information.
+ */
+function isDistinctive(query: ElementQuery): boolean {
+  // Always accept: specific identifiers
+  if (query.attributes?.["data-page-id"]) return true;
+  if (query.attributes?.["data-content-role"]) return true;
+  if (query.attributes?.["data-content-label"]) return true;
+  if (query.id) return true;
+  if (query.role) return true;
+  if (query.ariaLabel) return true;
+
+  // Accept: any custom attributes (data-* beyond the common ones)
+  if (query.attributes && Object.keys(query.attributes).length > 0) return true;
+
+  // Accept: text content that is distinctive (>3 chars, not just punctuation)
+  if (query.text && query.text.length > 3 && /[a-zA-Z]/.test(query.text)) return true;
+
+  // Reject: tagName-only or tagName + very short text (too generic)
+  return false;
 }
 
 /**

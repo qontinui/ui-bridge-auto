@@ -86,7 +86,7 @@ describe("generateStates", () => {
     expect(states[0].name).toBe("Active Dashboard");
   });
 
-  it("generates branch variant sub-states with non-overlapping elements", () => {
+  it("includes branch variant elements in the co-occurrence pipeline", () => {
     const enumeration: BranchEnumeration = {
       unconditionalElements: [],
       branchGroups: [
@@ -110,16 +110,13 @@ describe("generateStates", () => {
       appBranches: [],
     });
 
-    // Base state + variant state
-    expect(states.length).toBe(2);
-    const variant = states.find((s) => s.id.includes("--"));
-    expect(variant).toBeDefined();
-    expect(variant!.id).toBe("tab-active--toolkit-open");
-    expect(variant!.name).toContain("Toolkit Open");
-    expect(variant!.pathCost).toBe(1.5);
-    // Variant elements are separate from base state elements
-    expect(variant!.requiredElements.some((e) => e.role === "complementary")).toBe(true);
-    expect(variant!.requiredElements.some((e) => e.role === "main")).toBe(false);
+    // All elements from the same route merge into one state (same presence signature)
+    expect(states.length).toBe(1);
+    const active = states[0];
+    expect(active.id).toBe("tab-active");
+    // Both base and variant elements are in the same state
+    expect(active.requiredElements.some((e) => e.role === "main")).toBe(true);
+    expect(active.requiredElements.some((e) => e.role === "complementary")).toBe(true);
   });
 
   it("generates app-level blocking states", () => {
@@ -177,7 +174,7 @@ describe("generateStates", () => {
     expect(logsState!.group).toBe("monitoring");
   });
 
-  it("caps landmark elements to avoid over-specification", () => {
+  it("includes all distinctive elements from a route", () => {
     const elements = Array.from({ length: 20 }, (_, i) =>
       makeElement({ role: `role-${i}` }),
     );
@@ -190,7 +187,8 @@ describe("generateStates", () => {
     });
 
     const pageState = states.find((s) => s.id === "tab-page");
-    expect(pageState!.requiredElements.length).toBeLessThanOrEqual(8);
+    // All elements with role are distinctive — they all get included
+    expect(pageState!.requiredElements.length).toBe(20);
   });
 
   it("groups shared elements into their own state", () => {
