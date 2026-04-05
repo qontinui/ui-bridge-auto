@@ -100,7 +100,6 @@ export function generateStates(input: StateGeneratorInput): StateDefinition[] {
   const presenceMap = new Map<string, { query: ElementQuery; routeIds: Set<string> }>();
 
   const addToPresence = (query: ElementQuery, routeId: string) => {
-    if (!isDistinctive(query)) return;
     const key = JSON.stringify(query);
     const existing = presenceMap.get(key);
     if (existing) {
@@ -255,18 +254,15 @@ function selectLandmarks(elements: ExtractedElement[]): ElementQuery[] {
   const landmarks: ElementQuery[] = [];
   const MAX_LANDMARKS = 8;
 
-  // Pre-filter: only consider distinctive elements
-  const distinctive = elements.filter((el) => isDistinctive(el.query));
-
   // Priority 0: data-page-id (definitive state identifier, always include)
-  for (const el of distinctive) {
+  for (const el of elements) {
     if (el.query.attributes?.["data-page-id"]) {
       landmarks.push(el.query);
     }
   }
 
   // Priority 1: Elements with role or ariaLabel (structural landmarks)
-  for (const el of distinctive) {
+  for (const el of elements) {
     if (landmarks.length >= MAX_LANDMARKS) break;
     if ((el.query.role || el.query.ariaLabel) && !el.interactive && !isDuplicate(el.query, landmarks)) {
       landmarks.push(el.query);
@@ -274,7 +270,7 @@ function selectLandmarks(elements: ExtractedElement[]): ElementQuery[] {
   }
 
   // Priority 2: Elements with data-content-role
-  for (const el of distinctive) {
+  for (const el of elements) {
     if (landmarks.length >= MAX_LANDMARKS) break;
     if (
       el.query.attributes?.["data-content-role"] &&
@@ -285,7 +281,7 @@ function selectLandmarks(elements: ExtractedElement[]): ElementQuery[] {
   }
 
   // Priority 3: Elements with unique IDs
-  for (const el of distinctive) {
+  for (const el of elements) {
     if (landmarks.length >= MAX_LANDMARKS) break;
     if (el.query.id && !isDuplicate(el.query, landmarks)) {
       landmarks.push(el.query);
@@ -293,7 +289,7 @@ function selectLandmarks(elements: ExtractedElement[]): ElementQuery[] {
   }
 
   // Priority 4: Interactive elements with aria-labels (for state uniqueness)
-  for (const el of distinctive) {
+  for (const el of elements) {
     if (landmarks.length >= MAX_LANDMARKS) break;
     if (
       el.interactive &&
@@ -313,29 +309,6 @@ function isDuplicate(query: ElementQuery, landmarks: ElementQuery[]): boolean {
   return landmarks.some((l) => JSON.stringify(l) === key);
 }
 
-/**
- * Check if an element query is distinctive enough to identify a state.
- * Rejects generic queries like {"tagName":"span","text":"|"} that match
- * elements on many pages but lack identifying information.
- */
-function isDistinctive(query: ElementQuery): boolean {
-  // Always accept: specific identifiers
-  if (query.attributes?.["data-page-id"]) return true;
-  if (query.attributes?.["data-content-role"]) return true;
-  if (query.attributes?.["data-content-label"]) return true;
-  if (query.id) return true;
-  if (query.role) return true;
-  if (query.ariaLabel) return true;
-
-  // Accept: any custom attributes (data-* beyond the common ones)
-  if (query.attributes && Object.keys(query.attributes).length > 0) return true;
-
-  // Accept: text content that is distinctive (>3 chars, not just punctuation)
-  if (query.text && query.text.length > 3 && /[a-zA-Z]/.test(query.text)) return true;
-
-  // Reject: tagName-only or tagName + very short text (too generic)
-  return false;
-}
 
 /**
  * Format a condition label for display in state names.
