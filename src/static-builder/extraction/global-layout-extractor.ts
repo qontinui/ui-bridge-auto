@@ -90,8 +90,13 @@ export function extractGlobalLayout(
 
   // Identify early-return branches FIRST so we can exclude their components
   // from global element extraction. Components rendered inside conditional
-  // branches (login, loading, setup) are NOT always-present.
-  const branches = extractEarlyReturnBranches(appShellFile);
+  // branches (login, loading, setup) are NOT always-present — they form
+  // their own blocking states.
+  const branches = extractEarlyReturnBranches(
+    appShellFile,
+    project,
+    maxDepth ?? 10,
+  );
   appBranches.push(...branches);
 
   // Collect component names from conditional branches to exclude from global traversal
@@ -106,7 +111,7 @@ export function extractGlobalLayout(
   }
 
   // Also collect component names directly from the early-return JSX
-  for (const body of getExportedFunctionBodies(appShellFile)) {
+  for (const body of getAllFunctionBodies(appShellFile)) {
     const ifStatements = body
       .getDescendantsOfKind(SyntaxKind.IfStatement)
       .filter((ifStmt) => {
@@ -380,17 +385,17 @@ function isRouteComponent(
 }
 
 /**
- * Get function bodies from exported functions in a source file.
+ * Get function bodies from ALL functions in a source file.
+ * Includes both exported and non-exported functions, since local
+ * component functions (e.g., AppContent) may contain conditional guards.
  */
-function getExportedFunctionBodies(sourceFile: SourceFile): Node[] {
+function getAllFunctionBodies(sourceFile: SourceFile): Node[] {
   const bodies: Node[] = [];
   for (const fn of sourceFile.getFunctions()) {
-    if (!fn.isExported()) continue;
     const body = fn.getBody();
     if (body) bodies.push(body);
   }
   for (const varStmt of sourceFile.getVariableStatements()) {
-    if (!varStmt.isExported()) continue;
     for (const decl of varStmt.getDeclarations()) {
       const init = decl.getInitializer();
       if (init?.getKind() === SyntaxKind.ArrowFunction) {
@@ -411,9 +416,13 @@ function getExportedFunctionBodies(sourceFile: SourceFile): Node[] {
  *
  * These become app-level blocking states.
  */
-function extractEarlyReturnBranches(sourceFile: SourceFile): AppBranch[] {
+function extractEarlyReturnBranches(
+  sourceFile: SourceFile,
+  project?: Project,
+  maxDepth?: number,
+): AppBranch[] {
   const branches: AppBranch[] = [];
-  const bodies = getExportedFunctionBodies(sourceFile);
+  const bodies = getAllFunctionBodies(sourceFile);
 
   for (const body of bodies) {
     // Use getDescendantsOfKind since Block wraps statements in a SyntaxList
@@ -447,7 +456,23 @@ function extractEarlyReturnBranches(sourceFile: SourceFile): AppBranch[] {
       if (text === "null" || text === "undefined") continue;
 
       // Extract elements from the early return JSX
-      const elements = extractElements(returnExpr);
+      let elements = extractElements(returnExpr);
+
+      // If no elements found (e.g., return <LoginScreen />), follow the
+      // component reference to extract its internal elements.
+      if (elements.length === 0 && project) {
+        const componentNames = collectComponentNames(returnExpr);
+        for (const name of componentNames) {
+          const resolved = resolveComponent(name, sourceFile, project, maxDepth ?? 5);
+          if (resolved) {
+            const parsed = parseComponent(resolved.sourceFile, resolved.name);
+            if (parsed) {
+              elements.push(...extractElementsFromRoots(parsed.jsxRoots));
+            }
+          }
+        }
+      }
+
       if (elements.length === 0) continue;
 
       // Generate a label from the condition
