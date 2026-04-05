@@ -498,6 +498,7 @@ export {
   type AppBranch,
   extractGlobalLayout,
   extractGlobalElementQueries,
+  extractRouteSiblingElements,
   type BranchVariant,
   type BranchEnumeration,
   type BranchGroup,

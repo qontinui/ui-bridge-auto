@@ -32,6 +32,7 @@ import {
   type GlobalLayout,
   type AppBranch,
 } from "./extraction/global-layout-extractor";
+import { extractRouteSiblingElements } from "./extraction/sibling-extractor";
 import {
   enumerateBranches,
   enumerateEarlyReturns,
@@ -253,29 +254,35 @@ export function buildStateMachine(config: BuilderConfig): BuildResult {
     routeElements.set(primaryId, allElements);
   }
 
-  // Stage 5: Extract app shell elements and add to every route.
-  // App shell elements (sidebar, header, etc.) are always present regardless
-  // of route. By adding them to every route's element list, the co-occurrence
-  // grouper naturally creates a state for them (identical presence signature).
-  // No special "global" handling — the algorithm is general.
+  // Stage 5: Extract sibling elements (components rendered alongside routes).
+  // Find where the route component is rendered and extract elements from its
+  // siblings (e.g., Sidebar). These siblings are present on every route.
+  // Add them to every route's element list — the co-occurrence grouper
+  // naturally creates states for elements with identical presence signatures.
   let appBranches: AppBranch[] = [];
   let appShellElements: ExtractedElement[] = [];
   if (appShellFile) {
+    // Extract sibling elements (always-present alongside the route)
+    const siblingElements = extractRouteSiblingElements(
+      appShellFile,
+      resolved.routeFunction,
+      project,
+      resolved.maxComponentDepth,
+    );
+    appShellElements = siblingElements;
+    for (const route of routes) {
+      const primaryId = route.caseValues[0];
+      const existing = routeElements.get(primaryId) ?? [];
+      routeElements.set(primaryId, [...existing, ...siblingElements]);
+    }
+
+    // Extract early-return branches (login, loading) as blocking states
     const globalLayout = extractGlobalLayout(
       appShellFile,
       resolved.routeFunction,
       project,
       resolved.maxComponentDepth,
     );
-    appShellElements = globalLayout.globalElements;
-    // Add app shell elements to every route's element list.
-    // The co-occurrence grouper will create a state for elements that
-    // appear in all routes (identical presence signature).
-    for (const route of routes) {
-      const primaryId = route.caseValues[0];
-      const existing = routeElements.get(primaryId) ?? [];
-      routeElements.set(primaryId, [...existing, ...appShellElements]);
-    }
     appBranches = globalLayout.appBranches;
   }
 

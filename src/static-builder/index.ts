@@ -40,6 +40,7 @@ export {
   extractGlobalLayout,
   extractGlobalElementQueries,
 } from "./extraction/global-layout-extractor";
+export { extractRouteSiblingElements } from "./extraction/sibling-extractor";
 export type {
   BranchVariant,
   BranchEnumeration,

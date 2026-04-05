@@ -264,10 +264,10 @@ function selectLandmarks(elements: ExtractedElement[]): ElementQuery[] {
     }
   }
 
-  // Priority 1: Elements with role (structural landmarks)
+  // Priority 1: Elements with role or ariaLabel (structural landmarks)
   for (const el of elements) {
     if (landmarks.length >= MAX_LANDMARKS) break;
-    if (el.query.role && !el.interactive) {
+    if ((el.query.role || el.query.ariaLabel) && !el.interactive && !isDuplicate(el.query, landmarks)) {
       landmarks.push(el.query);
     }
   }
