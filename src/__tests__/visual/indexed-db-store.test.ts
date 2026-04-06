@@ -27,7 +27,7 @@ describe("IndexedDBBaselineStore", () => {
 
   beforeEach(() => {
     store = new IndexedDBBaselineStore({
-      dbName: `test-baselines-${Date.now()}`,
+      dbName: `test-baselines-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     });
   });
 
