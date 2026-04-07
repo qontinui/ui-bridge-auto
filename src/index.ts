@@ -431,6 +431,22 @@ export {
 
 // Server
 export { createAutoHandlers, type AutoHandlersConfig } from "./server/endpoints";
+export {
+  NativeWsClient,
+  NativeWsError,
+  NativeWsTimeoutError,
+  NativeWsClosedError,
+  type NativeWsClientOptions,
+  type WebSocketLike,
+  type JsonRpcRequest,
+  type JsonRpcResponse,
+  type JsonRpcEvent,
+  type NativeBridgeSnapshotLike,
+  type WaitForElementResult,
+  type SequenceStep,
+  type SequenceResult,
+  type SubscriptionsList,
+} from "./server/native-ws-client";
 
 // Recording & replay
 export {
