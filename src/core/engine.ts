@@ -391,6 +391,11 @@ export class AutomationEngine {
 
     return new Promise<QueryResult>((resolve, reject) => {
       let settled = false;
+      // Forward-referenced by `cleanup` — must stay `let` so TDZ doesn't fire
+      // if a synchronously-delivered subscriber event triggers cleanup before
+      // setTimeout has been called below. prefer-const is configured with
+      // ignoreReadBeforeAssign for exactly this pattern.
+      let timer: ReturnType<typeof setTimeout> | undefined;
       const unsubscribes: Array<() => void> = [];
 
       const cleanup = (): void => {
@@ -413,7 +418,7 @@ export class AutomationEngine {
         this.registry.on("element:stateChanged", check),
       );
 
-      const timer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => {
+      timer = setTimeout(() => {
         if (settled) return;
         cleanup();
         reject(
@@ -436,6 +441,8 @@ export class AutomationEngine {
 
     return new Promise<void>((resolve, reject) => {
       let settled = false;
+      // Forward-referenced by `cleanup`; must stay `let`. See waitForElement.
+      let timer: ReturnType<typeof setTimeout> | undefined;
 
       const cleanup = (): void => {
         settled = true;
@@ -449,7 +456,7 @@ export class AutomationEngine {
         resolve();
       });
 
-      const timer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => {
+      timer = setTimeout(() => {
         if (settled) return;
         cleanup();
         reject(

@@ -23,6 +23,9 @@ export default tseslint.config(
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
       ],
+      // Allow `let` when the variable is read (via closure) before being assigned.
+      // This pattern is load-bearing in timeout/cleanup scaffolds.
+      'prefer-const': ['error', { ignoreReadBeforeAssign: true }],
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/explicit-module-boundary-types': 'off',
