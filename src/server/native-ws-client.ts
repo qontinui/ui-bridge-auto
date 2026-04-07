@@ -82,7 +82,9 @@ export interface NativeBridgeSnapshotLike {
 export interface WaitForElementResult {
   id: string;
   state: unknown;
-  waited: number;
+  identifier?: unknown;
+  /** True if the call had to wait for the element to appear; false on fast-path. */
+  waited: boolean;
 }
 
 export interface SequenceStep {
@@ -200,8 +202,17 @@ export class NativeWsClient {
   private readonly pending = new Map<number, PendingRequest>();
   private readonly listeners = new Map<string, Set<EventListener>>();
   private readonly wildcardListeners = new Set<EventListener>();
+  /** Callbacks invoked when the client is disposed or the socket closes. */
+  private readonly disposeCallbacks = new Set<() => void>();
   private nextId = 1;
   private closed = false;
+  /**
+   * Wrapper used when attaching to a `ws`-style emitter (no addEventListener).
+   * Kept on the instance so `detach()` can remove the *same* function reference
+   * — otherwise `ws.off('message', ...)` would be a no-op and the listener
+   * (and through it, this client) would leak.
+   */
+  private wsOnMessageWrapper: ((data: unknown) => void) | null = null;
 
   constructor(ws: WebSocketLike, options: NativeWsClientOptions = {}) {
     this.ws = ws;
@@ -225,6 +236,18 @@ export class NativeWsClient {
     this.failAllPending(new NativeWsClosedError("NativeWsClient disposed"));
     this.listeners.clear();
     this.wildcardListeners.clear();
+    this.runDisposeCallbacks();
+  }
+
+  private runDisposeCallbacks(): void {
+    for (const cb of this.disposeCallbacks) {
+      try {
+        cb();
+      } catch {
+        /* swallow — disposing should be fail-safe */
+      }
+    }
+    this.disposeCallbacks.clear();
   }
 
   /** True after `dispose()` has been called or the socket has closed. */
@@ -466,12 +489,12 @@ export class NativeWsClient {
       }
     };
 
-    // Hook into dispose so iteration ends when the client tears down. We
-    // can't observe dispose directly, so wrap a wildcard listener that
-    // checks closed-state on every event.
-    const closeWatcher = this.on("*", () => {
-      if (this.closed) finish();
-    });
+    // Hook into dispose so iteration ends cleanly when the client tears
+    // down — even if no further events arrive after dispose.
+    this.disposeCallbacks.add(finish);
+    const closeWatcher = (): void => {
+      this.disposeCallbacks.delete(finish);
+    };
 
     return {
       next(): Promise<IteratorResult<JsonRpcEvent>> {
@@ -561,6 +584,7 @@ export class NativeWsClient {
     this.closed = true;
     this.detach();
     this.failAllPending(new NativeWsClosedError());
+    this.runDisposeCallbacks();
   };
 
   private dispatchEvent(evt: JsonRpcEvent): void {
@@ -598,9 +622,10 @@ export class NativeWsClient {
       this.ws.addEventListener("error", this.handleClose);
     } else if (typeof this.ws.on === "function") {
       // `ws` package style: emits raw data, wrap to match `{data}` shape.
-      this.ws.on("message", (data: unknown) =>
-        this.handleMessage({ data: typeof data === "string" ? data : String(data) }),
-      );
+      // Store the wrapper so we can detach the *same* reference later.
+      this.wsOnMessageWrapper = (data: unknown) =>
+        this.handleMessage({ data: typeof data === "string" ? data : String(data) });
+      this.ws.on("message", this.wsOnMessageWrapper);
       this.ws.on("close", this.handleClose);
       this.ws.on("error", this.handleClose);
     }
@@ -612,7 +637,13 @@ export class NativeWsClient {
       this.ws.removeEventListener("close", this.handleClose);
       this.ws.removeEventListener("error", this.handleClose);
     } else if (typeof this.ws.off === "function") {
-      this.ws.off("message", this.handleMessage as unknown as (...args: unknown[]) => void);
+      if (this.wsOnMessageWrapper) {
+        this.ws.off(
+          "message",
+          this.wsOnMessageWrapper as unknown as (...args: unknown[]) => void,
+        );
+        this.wsOnMessageWrapper = null;
+      }
       this.ws.off("close", this.handleClose);
       this.ws.off("error", this.handleClose);
     }
