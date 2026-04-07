@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { ReplayEngine, type ReplayResult } from "../../recording/replay-engine";
+import { ReplayEngine } from "../../recording/replay-engine";
 import type { RecordingSession } from "../../recording/session-recorder";
 import { MockActionExecutor } from "../../test-utils/mock-executor";
 import { MockRegistry } from "../../test-utils/mock-registry";

@@ -14,7 +14,6 @@ import type {
 import { StateDiscovery } from "../state/state-discovery";
 import type { ActionType } from "../types/transition";
 import type {
-  RecordedEvent,
   RecordedAction,
   RecordedSnapshot,
   RecordingSession,

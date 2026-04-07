@@ -260,7 +260,7 @@ function parseUnknownComponentResponse(
 async function processComplexConditions(
   client: AIClient,
   items: UncertainItem[],
-  config: AIConfig,
+  _config: AIConfig,
 ): Promise<ImprovedLabelResult[]> {
   if (items.length === 0) return [];
 
@@ -294,7 +294,7 @@ Respond in JSON format:
 
 function parseConditionLabelResponse(
   response: string,
-  originalLabels: string[],
+  _originalLabels: string[],
 ): ImprovedLabelResult[] {
   try {
     const json = extractJSON(response);
@@ -346,7 +346,7 @@ async function createClient(config: AIConfig): Promise<AIClient> {
   let Anthropic: any;
   try {
     // Dynamic import — @anthropic-ai/sdk is an optional peer dependency.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+     
     const module = await (Function('return import("@anthropic-ai/sdk")')() as Promise<any>);
     Anthropic = module.default ?? module.Anthropic;
   } catch {

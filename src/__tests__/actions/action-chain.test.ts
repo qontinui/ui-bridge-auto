@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { ActionChain, type ChainStep, type ChainContext } from "../../actions/action-chain";
+import { ActionChain, type ChainStep } from "../../actions/action-chain";
 import { MockActionExecutor } from "../../test-utils/mock-executor";
 import { resetIdCounter } from "../../test-utils/mock-elements";
 
@@ -298,8 +298,7 @@ describe("ActionChain — transform", () => {
       { type: "transform", variable: "name", operation: "toUpperCase", args: [] },
     ];
 
-    const chain = new ActionChain(executor, steps);
-    const ctx = (chain as any)._steps ? undefined : undefined;
+    new ActionChain(executor, steps);
     // Set initial variable by using a branch that sets it
     const stepsWithSetup: ChainStep[] = [
       { type: "transform", variable: "name", operation: "toUpperCase", args: [] },
@@ -316,18 +315,6 @@ describe("ActionChain — transform", () => {
   });
 
   it("transforms a string variable", async () => {
-    const steps: ChainStep[] = [
-      { type: "transform", variable: "greeting", operation: "toUpperCase", args: [] },
-    ];
-
-    const chain = new ActionChain(executor);
-    // Pre-set variable in context by executing with a patched context
-    const patchedSteps: ChainStep[] = [
-      // Use extract to set a variable, but we can't easily... let's use a different approach.
-      // Actually, ChainContext starts empty. We need an "assign" pattern.
-      // For now, test via the builder which is the intended use path.
-    ];
-
     // Test through ChainBuilder which is the public API
     const { ChainBuilder } = await import("../../actions/action-builder");
     const builder = new ChainBuilder(executor)
@@ -347,7 +334,6 @@ describe("ActionChain — transform", () => {
 
 describe("ActionChain — compute", () => {
   it("evaluates arithmetic expression from variables", async () => {
-    const { ChainBuilder } = await import("../../actions/action-builder");
     // We can't easily set variables without extract. Test compute with the chain directly.
     const steps: ChainStep[] = [
       { type: "compute", expression: "3 + 4", variable: "result" },

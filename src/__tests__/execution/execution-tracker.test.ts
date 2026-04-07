@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { ExecutionTracker } from '../../execution/execution-tracker';
 import type { NodeResult } from '../../execution/success-criteria';
 

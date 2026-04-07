@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { AutomationEngine, type EngineConfig } from "../../core/engine";
+import { AutomationEngine } from "../../core/engine";
 import {
   MockRegistry,
   MockActionExecutor,

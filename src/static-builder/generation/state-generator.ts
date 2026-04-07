@@ -21,7 +21,7 @@ import type { RouteEntry } from "../parsing/route-extractor";
 import type { ExtractedElement } from "../extraction/element-extractor";
 import type { BranchEnumeration } from "../extraction/branch-enumerator";
 import type { AppBranch } from "../extraction/global-layout-extractor";
-import { stateId, appStateId, branchStateId, stateName } from "./id-generator";
+import { stateId, appStateId, stateName } from "./id-generator";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -238,104 +238,6 @@ export function generateStates(input: StateGeneratorInput): StateDefinition[] {
 // Internals
 // ---------------------------------------------------------------------------
 
-/**
- * Select landmark elements for state detection.
- *
- * Not every element should be a required element — too many creates fragile
- * detection. Select elements that are distinctive for this page:
- * - Elements with role (headings, regions, navigation landmarks)
- * - Elements with unique IDs
- * - Elements with data-content-role
- * - Interactive elements with aria-labels (buttons with distinct names)
- *
- * Cap at a reasonable number to avoid over-specification.
- */
-function selectLandmarks(elements: ExtractedElement[]): ElementQuery[] {
-  const landmarks: ElementQuery[] = [];
-  const MAX_LANDMARKS = 8;
-
-  // Priority 0: data-page-id (definitive state identifier, always include)
-  for (const el of elements) {
-    if (el.query.attributes?.["data-page-id"]) {
-      landmarks.push(el.query);
-    }
-  }
-
-  // Priority 1: Elements with role or ariaLabel (structural landmarks)
-  for (const el of elements) {
-    if (landmarks.length >= MAX_LANDMARKS) break;
-    if ((el.query.role || el.query.ariaLabel) && !el.interactive && !isDuplicate(el.query, landmarks)) {
-      landmarks.push(el.query);
-    }
-  }
-
-  // Priority 2: Elements with data-content-role
-  for (const el of elements) {
-    if (landmarks.length >= MAX_LANDMARKS) break;
-    if (
-      el.query.attributes?.["data-content-role"] &&
-      !isDuplicate(el.query, landmarks)
-    ) {
-      landmarks.push(el.query);
-    }
-  }
-
-  // Priority 3: Elements with unique IDs
-  for (const el of elements) {
-    if (landmarks.length >= MAX_LANDMARKS) break;
-    if (el.query.id && !isDuplicate(el.query, landmarks)) {
-      landmarks.push(el.query);
-    }
-  }
-
-  // Priority 4: Interactive elements with aria-labels (for state uniqueness)
-  for (const el of elements) {
-    if (landmarks.length >= MAX_LANDMARKS) break;
-    if (
-      el.interactive &&
-      el.query.ariaLabel &&
-      !isDuplicate(el.query, landmarks)
-    ) {
-      landmarks.push(el.query);
-    }
-  }
-
-  return landmarks;
-}
-
-/** Check if a query is already in the landmarks list. */
-function isDuplicate(query: ElementQuery, landmarks: ElementQuery[]): boolean {
-  const key = JSON.stringify(query);
-  return landmarks.some((l) => JSON.stringify(l) === key);
-}
-
-
-/**
- * Format a condition label for display in state names.
- * "isToolkitOpen" → "Toolkit Open"
- * "data.items.length > 0" → "Has Items"
- */
-function formatConditionLabel(label: string): string {
-  // Strip boolean prefixes
-  let cleaned = label
-    .replace(/^!?\(/, "")
-    .replace(/\)$/, "")
-    .replace(/^(is|has|show|should)/i, "");
-
-  // CamelCase to spaces
-  cleaned = cleaned.replace(/([a-z])([A-Z])/g, "$1 $2");
-
-  // Clean up
-  cleaned = cleaned.replace(/[^a-zA-Z0-9\s]/g, " ").trim();
-
-  if (!cleaned) return label.slice(0, 20);
-
-  // Title case
-  return cleaned
-    .split(/\s+/)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-    .join(" ");
-}
 
 /** Convert a route ID to readable words. */
 function routeIdToWords(routeId: string): string {

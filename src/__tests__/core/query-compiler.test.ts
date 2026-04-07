@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { compileQuery, QueryCache } from "../../core/query-compiler";
-import type { CompiledQuery } from "../../core/query-compiler";
-import { matchesQuery, executeQuery } from "../../core/element-query";
+import { matchesQuery } from "../../core/element-query";
 import type { ElementQuery } from "../../core/element-query";
 import {
   createButton,

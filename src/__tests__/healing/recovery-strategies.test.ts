@@ -5,7 +5,6 @@ import {
   retryStrategy,
   fallbackStrategy,
   waitStrategy,
-  type RecoveryStrategy,
 } from "../../healing/recovery-strategies";
 import { classifyError } from "../../healing/error-classifier";
 import { MockActionExecutor } from "../../test-utils/mock-executor";

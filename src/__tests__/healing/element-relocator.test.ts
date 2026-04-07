@@ -3,7 +3,6 @@ import { ElementRelocator } from "../../healing/element-relocator";
 import { MockRegistry } from "../../test-utils/mock-registry";
 import {
   createButton,
-  createInput,
   createMockElement,
   resetIdCounter,
 } from "../../test-utils/mock-elements";

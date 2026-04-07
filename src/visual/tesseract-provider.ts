@@ -69,11 +69,13 @@ export class TesseractOCRProvider implements IOCRProvider {
         this.worker = await tesseract.createWorker(this.language);
       } catch (e: unknown) {
         this.initPromise = null;
-        throw new Error(
+        const wrapped = new Error(
           `Failed to initialize Tesseract.js. Is it installed? npm install tesseract.js — ${
             e instanceof Error ? e.message : String(e)
           }`,
         );
+        (wrapped as Error & { cause?: unknown }).cause = e;
+        throw wrapped;
       }
     })();
 

@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import {
-  PlaybookGenerator,
-  type Playbook,
-} from "../../recording/playbook-generator";
+import { PlaybookGenerator } from "../../recording/playbook-generator";
 import type { RecordingSession } from "../../recording/session-recorder";
 
 let generator: PlaybookGenerator;

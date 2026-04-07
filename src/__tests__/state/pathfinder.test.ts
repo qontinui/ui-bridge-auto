@@ -8,7 +8,6 @@ import {
   bfs,
   dijkstra,
   astar,
-  reconstructPath,
 } from "../../state/pathfinder";
 import type { TransitionDefinition } from "../../state/state-machine";
 

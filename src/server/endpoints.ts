@@ -8,27 +8,24 @@
  * accept parsed request bodies and return plain objects (no HTTP concerns).
  */
 
-import { AutomationEngine, type EngineConfig } from "../core/engine";
+import { AutomationEngine } from "../core/engine";
 import type { ElementQuery, QueryResult } from "../core/element-query";
 import { executeQuery } from "../core/element-query";
-import { explainQueryMatch, diagnoseNoResults } from "../core/query-debugger";
+import { diagnoseNoResults } from "../core/query-debugger";
 import type {
   StateDefinition,
   TransitionDefinition,
 } from "../state/state-machine";
 import type { ActionStep, SequenceOptions, ActionResult } from "../batch/action-sequence";
 import { executeSequence } from "../batch/action-sequence";
-import { FlowRegistry, type FlowDefinition } from "../batch/flow";
+import type { FlowDefinition } from "../batch/flow";
 import type { RegistryLike } from "../state/state-detector";
 import type { ActionExecutorLike } from "../state/transition-executor";
 import type { NavigationOptions, NavigationResult } from "../state/navigation";
-import { ReliabilityTracker } from "../state/reliability";
 import {
-  exportGraph,
   importGraph,
   type GraphFormat,
 } from "../state/state-graph";
-import { serialize, deserialize } from "../state/persistence";
 import {
   SessionRecorder,
   type RecordingSession,
@@ -39,7 +36,6 @@ import {
   type ReplayResult,
 } from "../recording/replay-engine";
 import { ElementRelocator } from "../healing/element-relocator";
-import { classifyError } from "../healing/error-classifier";
 import { generateStableId } from "../discovery/stable-id";
 import { ElementHighlightManager } from "../visual/element-highlight";
 import { extractElementText, assertTextInElement } from "../visual/text-assertion";
@@ -101,7 +97,6 @@ export function createAutoHandlers(config: AutoHandlersConfig) {
   const recorder = engine.recorder;
   const replayEngine = new ReplayEngine(executor, registry);
   const relocator = new ElementRelocator(registry);
-  const reliabilityTracker = engine.reliabilityTracker;
 
   // -----------------------------------------------------------------------
   // Helpers

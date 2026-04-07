@@ -14,7 +14,6 @@ import { type SourceFile, type Node, SyntaxKind } from "ts-morph";
 import {
   traceHandlers,
   type TracedHandler,
-  type TracedCall,
 } from "./handler-tracer";
 import type { ElementQuery } from "../../core/element-query";
 

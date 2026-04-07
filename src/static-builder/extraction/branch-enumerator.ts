@@ -244,7 +244,6 @@ function analyzeExpression(node: Node): BranchGroup | undefined {
 
   // Logical AND: cond && <A/>
   if (node.getKind() === SyntaxKind.BinaryExpression) {
-    const text = node.getText();
     // Check operator
     const operatorToken = node.getChildAtIndex(1);
     if (operatorToken) {

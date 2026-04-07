@@ -175,7 +175,7 @@ function runSearch(
   // We don't have direct access to visited count from core algorithms,
   // so we wrap with a counting proxy by intercepting transitions.
   // For simplicity, we estimate via the path depth.
-  let path: Path | null = null;
+  let path: Path | null;
 
   switch (strategy) {
     case "bfs":

@@ -9,7 +9,7 @@
  */
 
 import type { ActionExecutorLike } from "../state/transition-executor";
-import type { ElementQuery, QueryableElement } from "../core/element-query";
+import type { ElementQuery } from "../core/element-query";
 import { matchesQuery } from "../core/element-query";
 import type { RegistryLike } from "../state/state-detector";
 import { performAction } from "./dom-actions";

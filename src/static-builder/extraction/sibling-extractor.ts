@@ -175,7 +175,7 @@ function isComponentNode(node: Node, componentName: string): boolean {
 function followReExport(
   barrelFile: SourceFile,
   exportName: string,
-  project: Project,
+  _project: Project,
 ): SourceFile | null {
   for (const exportDecl of barrelFile.getExportDeclarations()) {
     const moduleSpec = exportDecl.getModuleSpecifierValue();

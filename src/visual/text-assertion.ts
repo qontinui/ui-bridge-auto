@@ -183,7 +183,7 @@ export async function assertTextInElement(
   const pollInterval = 100;
 
   // Retry loop: attempt at least once, retry until timeout if configured.
-  // eslint-disable-next-line no-constant-condition
+   
   while (true) {
     const attempt = await attemptTextAssertion(query, expectedText, registry, opts);
 

@@ -456,7 +456,7 @@ function extractEarlyReturnBranches(
       if (text === "null" || text === "undefined") continue;
 
       // Extract elements from the early return JSX
-      let elements = extractElements(returnExpr);
+      const elements = extractElements(returnExpr);
 
       // If no elements found (e.g., return <LoginScreen />), follow the
       // component reference to extract its internal elements.

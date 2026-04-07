@@ -1,10 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { matchesSemantic, semanticSearch } from "../../core/semantic-match";
-import type { SemanticQuery } from "../../core/semantic-match";
 import {
   createButton,
   createInput,
-  createMockElement,
   resetIdCounter,
 } from "../../test-utils/mock-elements";
 

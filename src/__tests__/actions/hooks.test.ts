@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { CircuitBreaker } from "../../actions/hooks";
 import type { ChainHooks } from "../../actions/hooks";
 import { ActionChain, type ChainStep } from "../../actions/action-chain";

@@ -12,7 +12,6 @@ import { generateTransitions } from "../../static-builder/generation/transition-
 import { stateId } from "../../static-builder/generation/id-generator";
 import { emitWorkflowConfig } from "../../static-builder/output/workflow-emitter";
 import { emitPersistedStateMachine } from "../../static-builder/output/persisted-emitter";
-import type { RouteEntry } from "../../static-builder/parsing/route-extractor";
 import type { ExtractedElement } from "../../static-builder/extraction/element-extractor";
 import type { BranchEnumeration } from "../../static-builder/extraction/branch-enumerator";
 import type { TracedTransition } from "../../static-builder/extraction/navigation-tracer";
@@ -256,9 +255,6 @@ describe("Static Builder Pipeline — Integration", () => {
     }
 
     // In-page transitions (home→settings, settings→logs)
-    const inPageTransitions = transitions.filter(
-      (t) => !t.id.startsWith("sidebar"),
-    );
     // These depend on inferSourceState matching — may or may not match
     // in the in-memory fixture. But sidebar guarantees connectivity.
 

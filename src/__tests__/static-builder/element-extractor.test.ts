@@ -1,9 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Project, SyntaxKind, type Node } from "ts-morph";
-import {
-  extractElements,
-  type ExtractedElement,
-} from "../../static-builder/extraction/element-extractor";
+import { extractElements } from "../../static-builder/extraction/element-extractor";
 
 function createJsxRoot(jsx: string): Node {
   const project = new Project({

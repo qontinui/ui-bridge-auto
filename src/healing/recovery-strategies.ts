@@ -6,7 +6,7 @@
  * common strategy presets.
  */
 
-import type { ElementQuery, QueryableElement } from "../core/element-query";
+import type { ElementQuery } from "../core/element-query";
 import type { ActionExecutorLike } from "../state/transition-executor";
 import type { ClassifiedError } from "./error-classifier";
 import type { ElementRelocator } from "./element-relocator";

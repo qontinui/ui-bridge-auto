@@ -533,7 +533,7 @@ export class ActionChain {
    */
   private async executeAssertStep(
     step: Extract<ChainStep, { type: 'assert' }>,
-    ctx: ChainContext,
+    _ctx: ChainContext,
   ): Promise<void> {
     // Count assertion: check how many elements match the query.
     if (step.property === 'count') {
@@ -569,7 +569,7 @@ export class ActionChain {
 
       const centerA = { x: rectA.x + rectA.width / 2, y: rectA.y + rectA.height / 2 };
       const centerB = { x: rectB.x + rectB.width / 2, y: rectB.y + rectB.height / 2 };
-      let matches = false;
+      let matches: boolean;
       switch (spec.relation) {
         case 'above': matches = centerA.y < centerB.y; break;
         case 'below': matches = centerA.y > centerB.y; break;

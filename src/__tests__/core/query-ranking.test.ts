@@ -1,9 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { computeMatchScore, rankResults } from "../../core/query-ranking";
-import type { RankedResult } from "../../core/query-ranking";
 import {
   createButton,
-  createInput,
   createLink,
   createMockElement,
   resetIdCounter,
@@ -60,7 +58,7 @@ describe("computeMatchScore", () => {
     // role-only query
     const singleScore = computeMatchScore(el, { role: "button" });
     // role + text query — when both match, raw score = 0.5 + 1.0 = 1.5, max = 1.5, normalised = 1.0
-    const multiScore = computeMatchScore(el, { role: "button", text: "Submit" });
+    computeMatchScore(el, { role: "button", text: "Submit" });
     // Both normalise to 1.0, but let's check with partial match
     const partialMulti = computeMatchScore(el, { role: "button", text: "Cancel" });
     // role matches (0.5) but text doesn't (0), max = 1.5, normalised = 0.5/1.5 ~ 0.33

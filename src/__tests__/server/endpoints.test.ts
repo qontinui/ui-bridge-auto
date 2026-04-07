@@ -8,8 +8,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createAutoHandlers, type AutoHandlersConfig } from "../../server/endpoints";
-import { AutomationEngine, type EngineConfig } from "../../core/engine";
+import { createAutoHandlers } from "../../server/endpoints";
+import { AutomationEngine } from "../../core/engine";
 import {
   MockRegistry,
   MockActionExecutor,

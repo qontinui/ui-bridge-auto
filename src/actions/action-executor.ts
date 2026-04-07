@@ -13,11 +13,9 @@ import type { ActionRecord, ActionExecutionOptions, VerificationSpec } from '../
 import {
   createActionRecord,
   markExecuting,
-  markCompleted,
   markFailed,
   createDefaultExecutionOptions,
 } from '../types/action';
-import { validateActionParams } from './action-types';
 import { withRetry, type RetryOptions } from './retry';
 
 // ---------------------------------------------------------------------------

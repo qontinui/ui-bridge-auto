@@ -166,9 +166,9 @@ export class ConnectionRouter {
 
     switch (condition.operator) {
       case '==':
-        return actual == expected; // eslint-disable-line eqeqeq
+        return actual == expected;  
       case '!=':
-        return actual != expected; // eslint-disable-line eqeqeq
+        return actual != expected;  
       case '>':
         return Number(actual) > Number(expected);
       case '<':

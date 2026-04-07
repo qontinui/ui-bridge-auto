@@ -6,9 +6,8 @@
  * Consumers interact with this class rather than the individual subsystems.
  */
 
-import type { ElementQuery, QueryableElement, QueryResult } from "./element-query";
+import type { ElementQuery, QueryResult } from "./element-query";
 import { findFirst, executeQuery } from "./element-query";
-import { explainQueryMatch, diagnoseNoResults } from "./query-debugger";
 import { TimeoutError } from "../wait/types";
 import {
   StateMachine,
@@ -17,9 +16,6 @@ import {
 } from "../state/state-machine";
 import { StateDetector, type RegistryLike } from "../state/state-detector";
 import type { ActionExecutorLike } from "../state/transition-executor";
-import {
-  executeTransition as execTr,
-} from "../state/transition-executor";
 import {
   navigate,
   type SearchStrategy,
@@ -33,23 +29,20 @@ import {
 } from "../state/persistence";
 import {
   exportGraph,
-  importGraph,
   type GraphFormat,
 } from "../state/state-graph";
 import type { ActionStep, ActionResult } from "../batch/action-sequence";
 import { executeSequence } from "../batch/action-sequence";
-import { FlowRegistry, type FlowDefinition } from "../batch/flow";
+import { FlowRegistry } from "../batch/flow";
 import {
   SessionRecorder,
   type RecordingSession,
-  type RecordedAction,
 } from "../recording/session-recorder";
 import {
   ReplayEngine,
   type ReplayOptions,
   type ReplayResult,
 } from "../recording/replay-engine";
-import { classifyError } from "../healing/error-classifier";
 import { ElementRelocator } from "../healing/element-relocator";
 import type {
   WorkflowGraph,
@@ -263,7 +256,7 @@ export class AutomationEngine {
     };
 
     const initialStates = this.stateMachine.getActiveStates();
-    let result = navigate(initialStates, target, transitions, navOptions);
+    const result = navigate(initialStates, target, transitions, navOptions);
     let remainingPath = [...result.path];
     const executedTransitions: typeof result.path = [];
     // Track failed transition IDs to avoid retrying the same path.
@@ -272,8 +265,6 @@ export class AutomationEngine {
     while (remainingPath.length > 0) {
       const tr = remainingPath[0];
       const startTime = Date.now();
-      let success = false;
-
       try {
         for (const action of tr.actions) {
           const found = this.executor.findElement(action.target);
@@ -316,7 +307,6 @@ export class AutomationEngine {
             await this.handleWaitAfter(action.waitAfter);
           }
         }
-        success = true;
       } catch (err) {
         if (this.enableReliabilityTracking) {
           this.reliabilityTracker.record(tr.id, false, Date.now() - startTime);
@@ -350,7 +340,7 @@ export class AutomationEngine {
       }
 
       if (this.enableReliabilityTracking) {
-        this.reliabilityTracker.record(tr.id, success, Date.now() - startTime);
+        this.reliabilityTracker.record(tr.id, true, Date.now() - startTime);
       }
 
       executedTransitions.push(tr);
@@ -401,7 +391,6 @@ export class AutomationEngine {
 
     return new Promise<QueryResult>((resolve, reject) => {
       let settled = false;
-      let timer: ReturnType<typeof setTimeout> | undefined;
       const unsubscribes: Array<() => void> = [];
 
       const cleanup = (): void => {
@@ -424,7 +413,7 @@ export class AutomationEngine {
         this.registry.on("element:stateChanged", check),
       );
 
-      timer = setTimeout(() => {
+      const timer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => {
         if (settled) return;
         cleanup();
         reject(
@@ -447,7 +436,6 @@ export class AutomationEngine {
 
     return new Promise<void>((resolve, reject) => {
       let settled = false;
-      let timer: ReturnType<typeof setTimeout> | undefined;
 
       const cleanup = (): void => {
         settled = true;
@@ -461,7 +449,7 @@ export class AutomationEngine {
         resolve();
       });
 
-      timer = setTimeout(() => {
+      const timer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => {
         if (settled) return;
         cleanup();
         reject(

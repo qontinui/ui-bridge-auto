@@ -14,8 +14,6 @@ import { MockActionExecutor } from "../../test-utils/mock-executor";
 import {
   createButton,
   createLink,
-  createInput,
-  createMockElement,
   createHeading,
   resetIdCounter,
 } from "../../test-utils/mock-elements";

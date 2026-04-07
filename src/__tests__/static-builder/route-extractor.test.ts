@@ -1,9 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Project } from "ts-morph";
-import {
-  extractRoutes,
-  type RouteEntry,
-} from "../../static-builder/parsing/route-extractor";
+import { extractRoutes } from "../../static-builder/parsing/route-extractor";
 
 /** Helper: create an in-memory project with a single source file. */
 function createSource(filename: string, content: string) {

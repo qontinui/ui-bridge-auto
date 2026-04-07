@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { waitForElement } from "../../wait/wait-for-element";
 import { TimeoutError } from "../../wait/types";
 import { MockRegistry } from "../../test-utils/mock-registry";

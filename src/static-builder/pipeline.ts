@@ -29,15 +29,12 @@ import {
 } from "./extraction/element-extractor";
 import {
   extractGlobalLayout,
-  type GlobalLayout,
   type AppBranch,
 } from "./extraction/global-layout-extractor";
 import { extractRouteSiblingElements } from "./extraction/sibling-extractor";
 import {
   enumerateBranches,
-  enumerateEarlyReturns,
   type BranchEnumeration,
-  type BranchGroup,
 } from "./extraction/branch-enumerator";
 import {
   traceNavigationTransitions,
@@ -58,7 +55,6 @@ import {
 import {
   loadSpecsSync,
   specElementsByState,
-  type LoadedSpec,
 } from "./extraction/spec-loader";
 
 // ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@
  * integration, and server handler wiring.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { MediaSnapshotData, VisualRegressionResult } from "@qontinui/ui-bridge";
 
 // ---------------------------------------------------------------------------

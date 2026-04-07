@@ -9,7 +9,6 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { ChainBuilder } from "../../actions/action-builder";
-import { ActionChain, type ChainStep } from "../../actions/action-chain";
 import { MockActionExecutor } from "../../test-utils/mock-executor";
 import { MockRegistry } from "../../test-utils/mock-registry";
 import { createButton, createMockElement, resetIdCounter } from "../../test-utils/mock-elements";
@@ -22,11 +21,11 @@ import type { ChainHooks } from "../../actions/hooks";
 // ---------------------------------------------------------------------------
 
 let executor: MockActionExecutor;
-let registry: MockRegistry;
+let _registry: MockRegistry;
 
 beforeEach(() => {
   executor = new MockActionExecutor();
-  registry = new MockRegistry();
+  _registry = new MockRegistry();
   resetIdCounter();
 });
 

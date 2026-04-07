@@ -176,9 +176,7 @@ describe("generateTransitions", () => {
 
     const inPage = transitions.filter((t) => !t.id.startsWith("sidebar"));
     // May or may not match source state — but the event should resolve
-    const eventTransition = inPage.find((t) =>
-      t.activateStates.includes("tab-active"),
-    );
+    inPage.find((t) => t.activateStates.includes("tab-active"));
     // Event transition exists if source state was inferred
     // (source inference from file path is heuristic — may not match in tests)
   });

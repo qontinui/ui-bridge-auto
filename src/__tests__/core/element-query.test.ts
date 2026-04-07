@@ -8,9 +8,7 @@ import {
 import {
   createMockElement,
   createButton,
-  createInput,
   createLink,
-  createHeading,
   createCheckbox,
   resetIdCounter,
 } from "../../test-utils/mock-elements";

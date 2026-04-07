@@ -15,7 +15,6 @@ import {
   type ArrowFunction,
   type FunctionExpression,
   type JsxElement,
-  type JsxSelfClosingElement,
   type JsxFragment,
 } from "ts-morph";
 

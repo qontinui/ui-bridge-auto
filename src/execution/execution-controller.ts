@@ -5,7 +5,7 @@
  */
 
 import type { ActionExecutorLike } from '../state/transition-executor';
-import type { SuccessCriteria, NodeResult } from './success-criteria';
+import type { SuccessCriteria } from './success-criteria';
 import { allMustPass } from './success-criteria';
 import { ExecutionTracker } from './execution-tracker';
 import type { ExecutionPhase } from './execution-tracker';
@@ -62,31 +62,28 @@ export class ExecutionController {
       getAllElements: () => [],
     }) as { getAllElements(): never[] };
 
-    const graphExecutor = new GraphExecutor(this.config.executor, registry);
-
     // Build a wrapper executor that checks pause/cancel between nodes
-    const self = this;
     const wrappingExecutor: ActionExecutorLike = {
-      findElement: (query) => self.config.executor.findElement(query),
-      async executeAction(elementId, action, params) {
-        if (self.cancelRequested) throw new Error('Execution cancelled');
+      findElement: (query) => this.config.executor.findElement(query),
+      executeAction: async (elementId, action, params) => {
+        if (this.cancelRequested) throw new Error('Execution cancelled');
 
         // Check for pause
-        if (self.pauseRequested) {
-          self._state = 'paused';
-          self._tracker.setPhase('paused');
+        if (this.pauseRequested) {
+          this._state = 'paused';
+          this._tracker.setPhase('paused');
           await new Promise<void>((resolve) => {
-            self.resumeResolve = resolve;
+            this.resumeResolve = resolve;
           });
-          self._state = 'running';
-          self._tracker.setPhase('running');
+          this._state = 'running';
+          this._tracker.setPhase('running');
         }
 
-        return self.config.executor.executeAction(elementId, action, params);
+        return this.config.executor.executeAction(elementId, action, params);
       },
-      async waitForIdle(timeout?) {
-        if (self.cancelRequested) throw new Error('Execution cancelled');
-        return self.config.executor.waitForIdle(timeout);
+      waitForIdle: async (timeout?: number) => {
+        if (this.cancelRequested) throw new Error('Execution cancelled');
+        return this.config.executor.waitForIdle(timeout);
       },
     };
 

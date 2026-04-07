@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { noMatch, matched, explainMatch, type ElementCriteria } from "../../types/match";
+import { noMatch, matched, explainMatch } from "../../types/match";
 import type { AutomationElement } from "../../types/element";
 
 function makeElement(overrides?: Partial<AutomationElement>): AutomationElement {

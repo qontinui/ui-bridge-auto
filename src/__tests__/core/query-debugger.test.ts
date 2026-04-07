@@ -9,7 +9,6 @@ import {
   createButton,
   createInput,
   createMockElement,
-  createCheckbox,
   resetIdCounter,
 } from "../../test-utils/mock-elements";
 

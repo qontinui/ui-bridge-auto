@@ -202,7 +202,7 @@ export class GraphExecutor {
   private async executeNode(
     node: WorkflowNode,
     variables: VariableContext,
-    graph: WorkflowGraph,
+    _graph: WorkflowGraph,
   ): Promise<NodeResult> {
     const start = Date.now();
 
@@ -389,7 +389,7 @@ export class GraphExecutor {
     }
 
     const actual = extractValue(el, node.assert.property);
-    // eslint-disable-next-line eqeqeq
+     
     const passed = actual == node.assert.expected;
 
     return Promise.resolve({
