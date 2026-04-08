@@ -28,6 +28,17 @@ export interface SemanticResult {
   matchedOn: string; // which field produced the best score
 }
 
+/**
+ * Optional semantic metadata that may be attached to a QueryableElement.
+ * These fields are not part of the base QueryableElement contract but are
+ * commonly set by callers (and tests) to support natural-language matching.
+ */
+interface SemanticFields {
+  purpose?: unknown;
+  semanticType?: unknown;
+  aliases?: unknown;
+}
+
 // ---------------------------------------------------------------------------
 // Single-element semantic match
 // ---------------------------------------------------------------------------
@@ -43,7 +54,7 @@ export function matchesSemantic(
   query: string,
   threshold: number = 0.55,
 ): boolean {
-  const el = element as any;
+  const el = element as QueryableElement & SemanticFields;
   const lowerQuery = query.toLowerCase();
 
   // Check purpose
@@ -116,7 +127,7 @@ function computeSemanticScore(
   element: QueryableElement,
   lowerQuery: string,
 ): { score: number; matchedOn: string } {
-  const el = element as any;
+  const el = element as QueryableElement & SemanticFields;
   let bestScore = 0;
   let matchedOn = "none";
 
