@@ -6,7 +6,9 @@
  * Complements `native-ws-client.test.ts`, which uses synthetic mock sockets.
  * These tests validate the full end-to-end round trip over actual WebSocket
  * frames, including real event-loop interleaving, async message dispatch,
- * and the `on`/`off` transport path taken by the `ws` package.
+ * and the `addEventListener` transport path that the `ws` package exposes
+ * (it implements both DOM-style `addEventListener` and Node-style `on`/`off`;
+ * `NativeWsClient.attach()` prefers `addEventListener` when present).
  *
  * @vitest-environment node
  */
@@ -215,9 +217,10 @@ describe("NativeWsClient (integration)", () => {
   beforeEach(async () => {
     server = await startTestServer();
     socket = await connectClient(server.port);
-    // `ws`'s WebSocket has a DOM-stricter addEventListener signature than
-    // our generic WebSocketLike; cast to unknown so TS accepts it while
-    // runtime happily uses the on()/off() transport path.
+    // The `@types/ws` WebSocket declares addEventListener with a generic
+    // K extends keyof WebSocketEventMap and a stricter listener signature
+    // than our minimal WebSocketLike (`(event: { data?: unknown }) => void`).
+    // The runtime contract is compatible, so cast through `unknown`.
     client = new NativeWsClient(socket as unknown as WebSocketLike, {
       defaultTimeoutMs: 2000,
     });
