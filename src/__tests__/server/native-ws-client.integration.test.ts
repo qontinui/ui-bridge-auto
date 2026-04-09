@@ -430,4 +430,145 @@ describe("NativeWsClient (integration)", () => {
     const err = await client.call("anything").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(NativeWsClosedError);
   });
+
+  // -------------------------------------------------------------------------
+  // 11. on()/off() transport path — forces the Node-style branch end-to-end
+  // -------------------------------------------------------------------------
+  it("works end-to-end against a transport that only exposes on()/off() (ws-style branch)", async () => {
+    // Dispose the default client+socket created in beforeEach so we can
+    // build a fresh one wrapped in a proxy that hides addEventListener.
+    client.dispose();
+    if (socket.readyState === WebSocket.OPEN) socket.close();
+
+    const rawSocket = await connectClient(server.port);
+
+    // Track the exact wrapper passed to `on('message', ...)` and spy on
+    // the proxy's `off` so we can prove `detach()` removes the same ref.
+    let capturedMessageWrapper: ((...args: unknown[]) => void) | null = null;
+    const offCalls: Array<{ event: string; listener: (...args: unknown[]) => void }> = [];
+
+    // Build a proxy exposing ONLY on/off/send/readyState/close/terminate.
+    // Critically, `addEventListener` / `removeEventListener` are absent so
+    // NativeWsClient.attach() takes the `on`/`off` branch.
+    const proxy: WebSocketLike = {
+      get readyState(): number {
+        return rawSocket.readyState;
+      },
+      send(data: string): void {
+        rawSocket.send(data);
+      },
+      close(code?: number, reason?: string): void {
+        rawSocket.close(code, reason);
+      },
+      on(event: string, listener: (...args: unknown[]) => void): void {
+        if (event === "message") {
+          capturedMessageWrapper = listener;
+        }
+        // `ws` emits `message` with (data, isBinary); forward as (data).
+        rawSocket.on(event, listener as (...args: unknown[]) => void);
+      },
+      off(event: string, listener: (...args: unknown[]) => void): void {
+        offCalls.push({ event, listener });
+        rawSocket.off(event, listener as (...args: unknown[]) => void);
+      },
+    };
+
+    // Sanity: make sure the proxy really does NOT expose addEventListener.
+    expect((proxy as { addEventListener?: unknown }).addEventListener).toBeUndefined();
+    expect((proxy as { removeEventListener?: unknown }).removeEventListener).toBeUndefined();
+
+    const onOffClient = new NativeWsClient(proxy, { defaultTimeoutMs: 2000 });
+
+    // --- 1. Request/response round trip through the on/off path ---
+    server.onMethod("health", () => ({ ok: true, path: "on-off" }));
+    const healthResult = (await onOffClient.health()) as { ok: boolean; path: string };
+    expect(healthResult).toEqual({ ok: true, path: "on-off" });
+
+    // --- 2. Event delivery via on('element:registered', ...) ---
+    const seen: JsonRpcEvent[] = [];
+    onOffClient.on("element:registered", (evt) => seen.push(evt));
+
+    server.broadcast("element:registered", { id: "btn-on-off" });
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(seen).toHaveLength(1);
+    expect((seen[0]?.data as { id: string }).id).toBe("btn-on-off");
+
+    // Confirm we actually captured the message wrapper during attach.
+    expect(capturedMessageWrapper).not.toBeNull();
+
+    // --- 3. dispose() calls off('message', <exact wrapper>) ---
+    onOffClient.dispose();
+
+    const messageOffCall = offCalls.find((c) => c.event === "message");
+    expect(messageOffCall).toBeDefined();
+    // The wsOnMessageWrapper fix: detach must pass the SAME function ref
+    // that was registered, otherwise ws.off is a no-op and the listener leaks.
+    expect(messageOffCall?.listener).toBe(capturedMessageWrapper);
+
+    // close and error listeners must also be detached.
+    expect(offCalls.some((c) => c.event === "close")).toBe(true);
+    expect(offCalls.some((c) => c.event === "error")).toBe(true);
+
+    // --- 4. Prove detach actually detached: post-dispose broadcasts must
+    // not reach the client's listeners ---
+    const preCount = seen.length;
+    server.broadcast("element:registered", { id: "should-not-arrive" });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(seen).toHaveLength(preCount);
+
+    // Clean up the raw socket we created outside beforeEach.
+    if (rawSocket.readyState === WebSocket.OPEN) rawSocket.close();
+  });
+
+  // -------------------------------------------------------------------------
+  // 12. Inverse dispose ordering: dispose → server-close
+  // -------------------------------------------------------------------------
+  it("dispose() before server close is clean, idempotent, and leaves no stuck state", async () => {
+    server.silence("slow");
+
+    // Fire an in-flight call that the server will never answer.
+    const pending = client.call("slow", {}, 5000);
+    const caught = pending.catch((e: unknown) => e);
+
+    // Let the send reach the server.
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Track unhandled rejections during the teardown window.
+    const unhandled: unknown[] = [];
+    const unhandledHandler = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", unhandledHandler);
+
+    try {
+      // 1. Dispose first — should reject the in-flight call with NativeWsClosedError.
+      expect(() => client.dispose()).not.toThrow();
+
+      const err = await caught;
+      expect(err).toBeInstanceOf(NativeWsClosedError);
+
+      expect(client.isClosed()).toBe(true);
+
+      // 2. NOW server-side closes the socket. Must not crash the process
+      // and must not trigger any late rejections.
+      server.closeAllClients();
+      await new Promise((r) => setTimeout(r, 30));
+
+      // 3. Second dispose is a no-op.
+      expect(() => client.dispose()).not.toThrow();
+      expect(client.isClosed()).toBe(true);
+
+      // 4. Subsequent calls reject cleanly (not hang).
+      const postErr = await client
+        .call("anything-else", {}, 1000)
+        .catch((e: unknown) => e);
+      expect(postErr).toBeInstanceOf(NativeWsClosedError);
+
+      // 5. No unhandled rejections accumulated during the teardown dance.
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", unhandledHandler);
+    }
+  });
 });
