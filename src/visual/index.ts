@@ -42,6 +42,9 @@ export {
   type IndexedDBStoreOptions,
 } from "./indexed-db-store";
 
+// Tauri/PostgreSQL baseline store
+export { TauriBaselineStore } from "./tauri-baseline-store";
+
 // Shared constants
 export { MEDIA_ELEMENT_TAGS } from "./types";
 
