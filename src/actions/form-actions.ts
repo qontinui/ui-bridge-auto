@@ -6,7 +6,6 @@
 import {
   sleep,
   getNativeSetter,
-  notifyReactValueChange,
   resetReactValueTracker,
   getReactProps,
   findOpenDropdown,

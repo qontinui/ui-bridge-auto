@@ -41,6 +41,8 @@ export function createWaitHandlers(engine: AutomationEngine) {
 
     waitForIdle: async (body: {
       timeout?: number;
+      // NOTE: signal filtering is not yet implemented in the engine;
+      // this field is accepted for API forward-compatibility but ignored.
       signals?: string[];
     }): Promise<HandlerResponse<null>> => {
       try {
