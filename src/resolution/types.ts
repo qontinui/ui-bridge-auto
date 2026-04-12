@@ -65,8 +65,13 @@ export interface RefRecord {
 // Escalation
 // ---------------------------------------------------------------------------
 
-/** The three resolution tiers in the escalation chain. */
-export type EscalationTier = "dom-query" | "accessibility-tree" | "visual-coordinate";
+/** The five resolution tiers in the escalation chain. */
+export type EscalationTier =
+  | "dom-query"
+  | "ctr"
+  | "search-engine"
+  | "accessibility-tree"
+  | "visual-coordinate";
 
 /** Emitted after an escalation attempt (success or exhaustion). */
 export interface EscalationEvent {
@@ -104,6 +109,8 @@ export interface EscalationConfig {
   accessibilityThreshold?: number;
   /** Minimum confidence for the visual-coordinate tier to accept a match. Default: 0.6. */
   visualThreshold?: number;
+  /** Minimum confidence for the SearchEngine tier to accept a match. Default: 0.7. */
+  searchThreshold?: number;
   /** Telemetry sink. Defaults to no-op. */
   telemetry?: ResolutionTelemetryEmitter;
 }

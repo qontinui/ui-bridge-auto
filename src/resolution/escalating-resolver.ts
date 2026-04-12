@@ -1,13 +1,17 @@
 /**
  * Opt-in escalating element resolver for web-based automation.
  *
- * Wraps `ActionExecutor` with a three-tier fallback chain that activates
+ * Wraps `ActionExecutor` with a five-tier fallback chain that activates
  * only when the deterministic DOM query fails:
  *
  * 1. **DOM query** — delegates to `ActionExecutor.execute()` (deterministic).
- * 2. **Accessibility-tree** — uses `ElementRelocator.findAlternative()` with
+ * 2. **CTR** — `CentralTargetRegistry.resolveInDOM()` for self-healing selector
+ *    resolution (optional; skipped if no CTR provided or no logical name derivable).
+ * 3. **SearchEngine** — `SearchEngine.findBest()` with multi-strategy search
+ *    using text, role, ARIA, and fuzzy matching (optional; skipped if not provided).
+ * 4. **Accessibility-tree** — uses `ElementRelocator.findAlternative()` with
  *    ARIA labels, fuzzy text, and role matching.
- * 3. **Visual coordinate** — spatial centroid scan against `query.within`
+ * 5. **Visual coordinate** — spatial centroid scan against `query.within`
  *    bounds combined with structural fingerprint matching.
  *
  * The default `ActionExecutor` path is never modified — this class is the
@@ -27,6 +31,7 @@ import type {
   ResolutionTelemetryEmitter,
 } from "./types";
 import { NoopTelemetryEmitter } from "./telemetry";
+import type { CentralTargetRegistry, SearchEngine, SearchCriteria, SearchResult } from "@qontinui/ui-bridge";
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -34,6 +39,7 @@ import { NoopTelemetryEmitter } from "./telemetry";
 
 const DEFAULT_ACCESSIBILITY_THRESHOLD = 0.75;
 const DEFAULT_VISUAL_THRESHOLD = 0.6;
+const DEFAULT_SEARCH_THRESHOLD = 0.7;
 
 // ---------------------------------------------------------------------------
 // EscalatingResolver
@@ -45,10 +51,14 @@ export interface EscalatingResolverConfig extends EscalationConfig {
   registry: { getAllElements(): QueryableElement[] };
   /** The underlying deterministic executor. */
   executor: ActionExecutor;
+  /** Optional: CTR for self-healing selector resolution. */
+  ctr?: CentralTargetRegistry;
+  /** Optional: SearchEngine for multi-strategy search. */
+  searchEngine?: SearchEngine;
 }
 
 /**
- * Wraps `ActionExecutor` with a three-tier escalation chain.
+ * Wraps `ActionExecutor` with a five-tier escalation chain.
  *
  * On deterministic success (Tier 1), no escalation event is emitted.
  * When escalation triggers, exactly one `EscalationEvent` is emitted
@@ -60,7 +70,10 @@ export class EscalatingResolver {
   private readonly relocator: ElementRelocator;
   private readonly accessibilityThreshold: number;
   private readonly visualThreshold: number;
+  private readonly searchThreshold: number;
   private readonly telemetry: ResolutionTelemetryEmitter;
+  private readonly ctr: CentralTargetRegistry | undefined;
+  private readonly searchEngine: SearchEngine | undefined;
 
   constructor(config: EscalatingResolverConfig) {
     this.registry = config.registry;
@@ -70,15 +83,19 @@ export class EscalatingResolver {
       config.accessibilityThreshold ?? DEFAULT_ACCESSIBILITY_THRESHOLD;
     this.visualThreshold =
       config.visualThreshold ?? DEFAULT_VISUAL_THRESHOLD;
+    this.searchThreshold =
+      config.searchThreshold ?? DEFAULT_SEARCH_THRESHOLD;
     this.telemetry = config.telemetry ?? new NoopTelemetryEmitter();
+    this.ctr = config.ctr;
+    this.searchEngine = config.searchEngine;
   }
 
   /**
    * Execute an action with escalation fallbacks.
    *
    * Tries the deterministic DOM query first. If that fails, escalates
-   * through accessibility-tree and visual-coordinate tiers before
-   * returning the original failure.
+   * through CTR, SearchEngine, accessibility-tree, and visual-coordinate
+   * tiers before returning the original failure.
    */
   async execute(
     query: ElementQuery,
@@ -95,37 +112,97 @@ export class EscalatingResolver {
       return tier1Result;
     }
 
-    // Tier 2: accessibility-tree query via ElementRelocator.
-    const tier2Result = await this.tryAccessibilityTier(
-      query,
-      action,
-      params,
-      options,
-    );
-    if (tier2Result) {
-      this.emitEvent(query, "accessibility-tree", tier2Result, started);
-      return tier2Result.record;
+    // Tier 1.5: CTR self-healing selector resolution.
+    const ctrResult = await this.tryCtrTier(query, action, params, options);
+    if (ctrResult) {
+      this.emitEvent(query, "ctr", ctrResult, started);
+      return ctrResult.record;
     }
 
-    // Tier 3: visual coordinate match (only if spatial anchor exists).
-    const tier3Result = await this.tryVisualCoordinateTier(
-      query,
-      action,
-      params,
-      options,
-    );
+    // Tier 2: SearchEngine multi-strategy search.
+    const searchResult = await this.trySearchEngineTier(query, action, params, options);
+    if (searchResult) {
+      this.emitEvent(query, "search-engine", searchResult, started);
+      return searchResult.record;
+    }
+
+    // Tier 3: ElementRelocator accessibility-tree fallback.
+    const tier3Result = await this.tryAccessibilityTier(query, action, params, options);
     if (tier3Result) {
-      this.emitEvent(query, "visual-coordinate", tier3Result, started);
+      this.emitEvent(query, "accessibility-tree", tier3Result, started);
       return tier3Result.record;
     }
 
-    // All tiers exhausted — emit event, return original failure.
+    // Tier 4: Visual coordinate scan (requires spatial anchor).
+    const tier4Result = await this.tryVisualCoordinateTier(query, action, params, options);
+    if (tier4Result) {
+      this.emitEvent(query, "visual-coordinate", tier4Result, started);
+      return tier4Result.record;
+    }
+
+    // All tiers exhausted.
     this.emitEvent(query, "exhausted", null, started);
     return tier1Result;
   }
 
   // -------------------------------------------------------------------------
-  // Tier 2: Accessibility-tree
+  // Tier 1.5: CTR
+  // -------------------------------------------------------------------------
+
+  private async tryCtrTier(
+    query: ElementQuery,
+    action: ActionType,
+    params?: Record<string, unknown>,
+    options?: ExecuteOptions,
+  ): Promise<TierResult | null> {
+    if (!this.ctr) return null;
+
+    const logicalName = this.queryToLogicalName(query);
+    if (logicalName === null) return null;
+
+    const result = this.ctr.resolveInDOM(logicalName);
+    if (!result.resolved || !result.element) return null;
+
+    const registryEl = this.registry.getAllElements().find(
+      (el) => el.element === result.element,
+    );
+    if (!registryEl) return null;
+
+    const record = await this.executor.executeById(registryEl.id, action, params, options);
+    if (record.status === "failed") return null;
+
+    return { record, elementId: registryEl.id, confidence: 0.95 };
+  }
+
+  // -------------------------------------------------------------------------
+  // Tier 2: SearchEngine
+  // -------------------------------------------------------------------------
+
+  private async trySearchEngineTier(
+    query: ElementQuery,
+    action: ActionType,
+    params?: Record<string, unknown>,
+    options?: ExecuteOptions,
+  ): Promise<TierResult | null> {
+    if (!this.searchEngine) return null;
+
+    const criteria = this.queryToSearchCriteria(query);
+    const result: SearchResult | null = this.searchEngine.findBest(criteria);
+    if (!result || result.confidence < this.searchThreshold) return null;
+
+    const registryEl = this.registry.getAllElements().find(
+      (el) => el.id === result.element.id,
+    );
+    if (!registryEl) return null;
+
+    const record = await this.executor.executeById(registryEl.id, action, params, options);
+    if (record.status === "failed") return null;
+
+    return { record, elementId: registryEl.id, confidence: result.confidence };
+  }
+
+  // -------------------------------------------------------------------------
+  // Tier 3: Accessibility-tree
   // -------------------------------------------------------------------------
 
   private async tryAccessibilityTier(
@@ -155,7 +232,7 @@ export class EscalatingResolver {
   }
 
   // -------------------------------------------------------------------------
-  // Tier 3: Visual coordinate
+  // Tier 4: Visual coordinate
   // -------------------------------------------------------------------------
 
   private async tryVisualCoordinateTier(
@@ -243,6 +320,39 @@ export class EscalatingResolver {
       elementId: bestCandidate.id,
       confidence: bestConfidence,
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // Helpers
+  // -------------------------------------------------------------------------
+
+  /**
+   * Derive a logical name from a query for CTR lookup.
+   * Returns null if no usable identifier is present.
+   */
+  private queryToLogicalName(query: ElementQuery): string | null {
+    if (typeof query.id === "string") return query.id;
+    if (query.text !== undefined) return query.text;
+    if (query.ariaLabel !== undefined) return query.ariaLabel;
+    return null;
+  }
+
+  /**
+   * Map an ElementQuery to SearchCriteria for the SearchEngine tier.
+   * Only sets fields that have values — undefined fields are omitted.
+   */
+  private queryToSearchCriteria(query: ElementQuery): SearchCriteria {
+    const criteria: SearchCriteria = {};
+
+    if (typeof query.text === "string") criteria.text = query.text;
+    if (query.textContains !== undefined) criteria.textContains = query.textContains;
+    if (query.ariaLabel !== undefined) criteria.accessibleName = query.ariaLabel;
+    if (query.role !== undefined) criteria.role = query.role;
+    if (query.tagName !== undefined) criteria.selector = query.tagName;
+    if (query.fuzzyText !== undefined) criteria.fuzzy = true;
+    if (query.fuzzyThreshold !== undefined) criteria.fuzzyThreshold = query.fuzzyThreshold;
+
+    return criteria;
   }
 
   // -------------------------------------------------------------------------

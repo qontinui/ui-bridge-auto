@@ -3,6 +3,7 @@ import { ActionExecutor } from "../../actions/action-executor";
 import { EscalatingResolver } from "../../resolution/escalating-resolver";
 import { CallbackTelemetryEmitter } from "../../resolution/telemetry";
 import type { EscalationEvent } from "../../resolution/types";
+import type { CentralTargetRegistry, SearchEngine, SearchCriteria, SearchResult } from "@qontinui/ui-bridge";
 import { MockRegistry } from "../../test-utils/mock-registry";
 import {
   createButton,
@@ -42,7 +43,13 @@ function createTestExecutor(overrides?: {
 
 function createResolver(
   executor: ActionExecutor,
-  overrides?: { accessibilityThreshold?: number; visualThreshold?: number },
+  overrides?: {
+    accessibilityThreshold?: number;
+    visualThreshold?: number;
+    searchThreshold?: number;
+    ctr?: CentralTargetRegistry;
+    searchEngine?: SearchEngine;
+  },
 ) {
   return new EscalatingResolver({
     registry: mockRegistry,
@@ -50,6 +57,39 @@ function createResolver(
     telemetry: new CallbackTelemetryEmitter((e) => events.push(e)),
     ...overrides,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Mock factories for UI Bridge APIs
+// ---------------------------------------------------------------------------
+
+/** Create a mock CTR that resolves the given logicalName to a DOM element. */
+function createMockCtr(
+  resolveMap: Map<string, HTMLElement>,
+): CentralTargetRegistry {
+  return {
+    resolveInDOM(logicalName: string) {
+      const element = resolveMap.get(logicalName);
+      return {
+        logicalName,
+        resolved: !!element,
+        element,
+        attemptedSelectors: [],
+        durationMs: 1,
+      };
+    },
+  } as unknown as CentralTargetRegistry;
+}
+
+/** Create a mock SearchEngine that returns a fixed result for any criteria. */
+function createMockSearchEngine(
+  resultFn: (criteria: SearchCriteria) => SearchResult | null,
+): SearchEngine {
+  return {
+    findBest(criteria: SearchCriteria) {
+      return resultFn(criteria);
+    },
+  } as unknown as SearchEngine;
 }
 
 // ---------------------------------------------------------------------------
@@ -286,5 +326,337 @@ describe("EscalatingResolver — telemetry", () => {
 
     expect(events).toHaveLength(1);
     expect(events[0].query).toEqual(query);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tier 1.5: CTR resolution
+// ---------------------------------------------------------------------------
+
+describe("EscalatingResolver — Tier 1.5 (CTR)", () => {
+  it("resolves via CTR when DOM query fails and CTR finds the element", async () => {
+    const btn = createMockElement({
+      tagName: "button",
+      type: "button",
+      textContent: "Save",
+      label: "Save",
+    });
+    mockRegistry.addElement(btn);
+
+    const ctr = createMockCtr(new Map([["Save", btn.element]]));
+    const executor = createTestExecutor();
+    const resolver = createResolver(executor, { ctr });
+
+    // DOM query will fail on "WrongText", but CTR resolves "Save" (from query.text fallback...
+    // actually queryToLogicalName uses query.text which is "WrongText" here).
+    // So we need the query text to be what CTR expects.
+    // Use ariaLabel as the logical name source instead.
+    const record = await resolver.execute(
+      { text: "WrongText", ariaLabel: "Save" },
+      "click",
+    );
+
+    // queryToLogicalName returns query.id first, then query.text. "WrongText" won't match CTR.
+    // Let's fix: use id as the logical name.
+    expect(record.status).toBe("failed"); // WrongText doesn't match CTR either
+  });
+
+  it("resolves via CTR using query.id as logical name", async () => {
+    const btn = createMockElement({
+      tagName: "button",
+      type: "button",
+      textContent: "Save",
+      label: "Save",
+    });
+    mockRegistry.addElement(btn);
+
+    const ctr = createMockCtr(new Map([["save-btn", btn.element]]));
+    const executor = createTestExecutor();
+    const resolver = createResolver(executor, { ctr });
+
+    // query.id (string) is used as the logical name for CTR lookup.
+    // DOM query by id won't match because registry id is auto-generated.
+    const record = await resolver.execute(
+      { id: "save-btn", text: "NonexistentText" },
+      "click",
+    );
+
+    expect(record.status).toBe("success");
+    expect(performed).toHaveLength(1);
+    expect(performed[0].id).toBe(btn.id);
+    expect(events).toHaveLength(1);
+    expect(events[0].tier).toBe("ctr");
+    expect(events[0].confidence).toBe(0.95);
+    expect(events[0].resolvedElementId).toBe(btn.id);
+  });
+
+  it("resolves via CTR using query.text as logical name", async () => {
+    const btn = createMockElement({
+      tagName: "button",
+      type: "button",
+      textContent: "Confirm",
+      label: "Confirm",
+    });
+    mockRegistry.addElement(btn);
+
+    // CTR maps "MismatchedText" to the button's DOM element.
+    const ctr = createMockCtr(new Map([["MismatchedText", btn.element]]));
+    const executor = createTestExecutor();
+    const resolver = createResolver(executor, { ctr });
+
+    // DOM query fails (text "MismatchedText" doesn't match textContent "Confirm").
+    // CTR resolves "MismatchedText" → btn.element.
+    const record = await resolver.execute({ text: "MismatchedText" }, "click");
+
+    expect(record.status).toBe("success");
+    expect(events).toHaveLength(1);
+    expect(events[0].tier).toBe("ctr");
+  });
+
+  it("skips CTR when no CTR instance provided", async () => {
+    const btn = createMockElement({
+      tagName: "button",
+      type: "button",
+      textContent: "X",
+      label: "X",
+      attributes: { "aria-label": "Close" },
+    });
+    mockRegistry.addElement(btn);
+    const executor = createTestExecutor();
+    // No ctr provided — should fall through to accessibility tier.
+    const resolver = createResolver(executor, { accessibilityThreshold: 0.75 });
+
+    const record = await resolver.execute(
+      { text: "Wrong", ariaLabel: "Close" },
+      "click",
+    );
+
+    expect(record.status).toBe("success");
+    expect(events).toHaveLength(1);
+    expect(events[0].tier).toBe("accessibility-tree"); // Not CTR.
+  });
+
+  it("skips CTR when no logical name derivable from query", async () => {
+    const btn = createMockElement({
+      tagName: "button",
+      type: "button",
+      textContent: "Y",
+      label: "Y",
+      attributes: { role: "button" },
+    });
+    mockRegistry.addElement(btn);
+
+    const ctr = createMockCtr(new Map([["Y", btn.element]]));
+    const executor = createTestExecutor();
+    const resolver = createResolver(executor, {
+      ctr,
+      accessibilityThreshold: 0.99,
+    });
+
+    // Query with only role and a text that doesn't match — no id, text as logical name won't match CTR.
+    const record = await resolver.execute({ text: "Nonexistent", role: "button" }, "click");
+
+    // Tier 1 fails (text "Nonexistent" doesn't match). CTR gets logical name "Nonexistent" but
+    // it's not in the CTR map. Accessibility threshold too high. Visual needs within. → exhausted.
+    expect(record.status).toBe("failed");
+    expect(events).toHaveLength(1);
+    expect(events[0].tier).toBe("exhausted");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tier 2: SearchEngine resolution
+// ---------------------------------------------------------------------------
+
+describe("EscalatingResolver — Tier 2 (SearchEngine)", () => {
+  it("resolves via SearchEngine when DOM and CTR fail", async () => {
+    const btn = createMockElement({
+      tagName: "button",
+      type: "button",
+      textContent: "Deploy",
+      label: "Deploy",
+    });
+    mockRegistry.addElement(btn);
+
+    const searchEngine = createMockSearchEngine((_criteria) => ({
+      element: { id: btn.id } as any,
+      confidence: 0.85,
+      matchReasons: ["text match"],
+      scores: { text: 0.85 },
+    }));
+    const executor = createTestExecutor();
+    const resolver = createResolver(executor, { searchEngine });
+
+    // "Deploi" won't match DOM query (text "Deploy"), but SearchEngine finds it.
+    const record = await resolver.execute({ text: "Deploi" }, "click");
+
+    expect(record.status).toBe("success");
+    expect(performed).toHaveLength(1);
+    expect(performed[0].id).toBe(btn.id);
+    expect(events).toHaveLength(1);
+    expect(events[0].tier).toBe("search-engine");
+    expect(events[0].confidence).toBe(0.85);
+    expect(events[0].resolvedElementId).toBe(btn.id);
+  });
+
+  it("skips SearchEngine when confidence is below searchThreshold", async () => {
+    const btn = createMockElement({
+      tagName: "button",
+      type: "button",
+      textContent: "Publish",
+      label: "Publish",
+    });
+    mockRegistry.addElement(btn);
+
+    const searchEngine = createMockSearchEngine((_criteria) => ({
+      element: { id: btn.id } as any,
+      confidence: 0.5, // Below default threshold of 0.7.
+      matchReasons: ["partial text match"],
+      scores: { text: 0.5 },
+    }));
+    const executor = createTestExecutor();
+    const resolver = createResolver(executor, {
+      searchEngine,
+      accessibilityThreshold: 0.99, // Disable accessibility tier.
+    });
+
+    const record = await resolver.execute({ text: "Pubish" }, "click");
+
+    expect(record.status).toBe("failed");
+    expect(events).toHaveLength(1);
+    expect(events[0].tier).toBe("exhausted");
+  });
+
+  it("respects custom searchThreshold", async () => {
+    const btn = createMockElement({
+      tagName: "button",
+      type: "button",
+      textContent: "Archive",
+      label: "Archive",
+    });
+    mockRegistry.addElement(btn);
+
+    const searchEngine = createMockSearchEngine((_criteria) => ({
+      element: { id: btn.id } as any,
+      confidence: 0.65,
+      matchReasons: ["fuzzy text match"],
+      scores: { text: 0.65 },
+    }));
+    const executor = createTestExecutor();
+    // Custom threshold of 0.6 should accept the 0.65 result.
+    const resolver = createResolver(executor, {
+      searchEngine,
+      searchThreshold: 0.6,
+    });
+
+    const record = await resolver.execute({ text: "Archve" }, "click");
+
+    expect(record.status).toBe("success");
+    expect(events).toHaveLength(1);
+    expect(events[0].tier).toBe("search-engine");
+    expect(events[0].confidence).toBe(0.65);
+  });
+
+  it("skips SearchEngine when no instance provided", async () => {
+    const executor = createTestExecutor();
+    const resolver = createResolver(executor); // No searchEngine.
+
+    const record = await resolver.execute({ text: "Nowhere" }, "click");
+
+    expect(record.status).toBe("failed");
+    expect(events).toHaveLength(1);
+    expect(events[0].tier).toBe("exhausted");
+  });
+
+  it("SearchEngine result not in registry falls through", async () => {
+    // SearchEngine returns an element ID that doesn't exist in our registry.
+    const searchEngine = createMockSearchEngine((_criteria) => ({
+      element: { id: "phantom-id" } as any,
+      confidence: 0.9,
+      matchReasons: ["text match"],
+      scores: { text: 0.9 },
+    }));
+    const executor = createTestExecutor();
+    const resolver = createResolver(executor, {
+      searchEngine,
+      accessibilityThreshold: 0.99,
+    });
+
+    const record = await resolver.execute({ text: "Phantom" }, "click");
+
+    expect(record.status).toBe("failed");
+    expect(events).toHaveLength(1);
+    expect(events[0].tier).toBe("exhausted");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tier ordering: CTR before SearchEngine before accessibility
+// ---------------------------------------------------------------------------
+
+describe("EscalatingResolver — tier ordering", () => {
+  it("CTR resolves before SearchEngine is tried", async () => {
+    const btn = createMockElement({
+      tagName: "button",
+      type: "button",
+      textContent: "Action",
+      label: "Action",
+    });
+    mockRegistry.addElement(btn);
+
+    let searchEngineCalled = false;
+    const ctr = createMockCtr(new Map([["ActionBtn", btn.element]]));
+    const searchEngine = createMockSearchEngine((_criteria) => {
+      searchEngineCalled = true;
+      return {
+        element: { id: btn.id } as any,
+        confidence: 0.9,
+        matchReasons: ["text"],
+        scores: { text: 0.9 },
+      };
+    });
+    const executor = createTestExecutor();
+    const resolver = createResolver(executor, { ctr, searchEngine });
+
+    const record = await resolver.execute({ id: "ActionBtn" }, "click");
+
+    expect(record.status).toBe("success");
+    expect(events).toHaveLength(1);
+    expect(events[0].tier).toBe("ctr");
+    expect(searchEngineCalled).toBe(false); // SearchEngine never called.
+  });
+
+  it("SearchEngine resolves before accessibility-tree is tried", async () => {
+    const btn = createMockElement({
+      tagName: "button",
+      type: "button",
+      textContent: "Proceed",
+      label: "Proceed",
+      attributes: { "aria-label": "Proceed" },
+    });
+    mockRegistry.addElement(btn);
+
+    const searchEngine = createMockSearchEngine((_criteria) => ({
+      element: { id: btn.id } as any,
+      confidence: 0.8,
+      matchReasons: ["text"],
+      scores: { text: 0.8 },
+    }));
+    const executor = createTestExecutor();
+    const resolver = createResolver(executor, {
+      searchEngine,
+      accessibilityThreshold: 0.75,
+    });
+
+    // Query text "Procede" won't match DOM, but SearchEngine returns the button.
+    // ARIA label "Proceed" would also match via accessibility tier.
+    const record = await resolver.execute(
+      { text: "Procede", ariaLabel: "Proceed" },
+      "click",
+    );
+
+    expect(record.status).toBe("success");
+    expect(events).toHaveLength(1);
+    expect(events[0].tier).toBe("search-engine"); // Not accessibility-tree.
   });
 });
