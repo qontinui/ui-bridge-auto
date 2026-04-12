@@ -334,7 +334,7 @@ describe("EscalatingResolver — telemetry", () => {
 // ---------------------------------------------------------------------------
 
 describe("EscalatingResolver — Tier 1.5 (CTR)", () => {
-  it("resolves via CTR when DOM query fails and CTR finds the element", async () => {
+  it("resolves via CTR using ariaLabel as logical name (ariaLabel takes priority over text)", async () => {
     const btn = createMockElement({
       tagName: "button",
       type: "button",
@@ -343,22 +343,22 @@ describe("EscalatingResolver — Tier 1.5 (CTR)", () => {
     });
     mockRegistry.addElement(btn);
 
+    // CTR maps "Save" (the ariaLabel) to the button's DOM element.
     const ctr = createMockCtr(new Map([["Save", btn.element]]));
     const executor = createTestExecutor();
     const resolver = createResolver(executor, { ctr });
 
-    // DOM query will fail on "WrongText", but CTR resolves "Save" (from query.text fallback...
-    // actually queryToLogicalName uses query.text which is "WrongText" here).
-    // So we need the query text to be what CTR expects.
-    // Use ariaLabel as the logical name source instead.
+    // DOM query fails on "WrongText". queryToLogicalName picks ariaLabel "Save" over
+    // text "WrongText" (priority: id > ariaLabel > text). CTR resolves "Save" → btn.element.
     const record = await resolver.execute(
       { text: "WrongText", ariaLabel: "Save" },
       "click",
     );
 
-    // queryToLogicalName returns query.id first, then query.text. "WrongText" won't match CTR.
-    // Let's fix: use id as the logical name.
-    expect(record.status).toBe("failed"); // WrongText doesn't match CTR either
+    expect(record.status).toBe("success");
+    expect(events).toHaveLength(1);
+    expect(events[0].tier).toBe("ctr");
+    expect(events[0].resolvedElementId).toBe(btn.id);
   });
 
   it("resolves via CTR using query.id as logical name", async () => {
@@ -436,7 +436,7 @@ describe("EscalatingResolver — Tier 1.5 (CTR)", () => {
     expect(events[0].tier).toBe("accessibility-tree"); // Not CTR.
   });
 
-  it("skips CTR when no logical name derivable from query", async () => {
+  it("skips CTR when no logical name derivable from query (role-only query)", async () => {
     const btn = createMockElement({
       tagName: "button",
       type: "button",
@@ -453,11 +453,11 @@ describe("EscalatingResolver — Tier 1.5 (CTR)", () => {
       accessibilityThreshold: 0.99,
     });
 
-    // Query with only role and a text that doesn't match — no id, text as logical name won't match CTR.
-    const record = await resolver.execute({ text: "Nonexistent", role: "button" }, "click");
+    // Query with only role — no id, no ariaLabel, no text — queryToLogicalName returns null,
+    // so the CTR tier is skipped entirely before it is even invoked.
+    // Accessibility threshold too high. Visual needs within. → exhausted.
+    const record = await resolver.execute({ role: "menu" }, "click");
 
-    // Tier 1 fails (text "Nonexistent" doesn't match). CTR gets logical name "Nonexistent" but
-    // it's not in the CTR map. Accessibility threshold too high. Visual needs within. → exhausted.
     expect(record.status).toBe("failed");
     expect(events).toHaveLength(1);
     expect(events[0].tier).toBe("exhausted");

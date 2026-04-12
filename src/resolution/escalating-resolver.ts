@@ -283,7 +283,12 @@ export class EscalatingResolver {
       const dist = Math.sqrt(dx * dx + dy * dy);
       let confidence = maxDist > 0 ? 1 - dist / maxDist : 1;
 
+      // Scale to 0.4-1.0 range (pure spatial match floors at 0.4).
+      // This must happen before fingerprint boosts so the final value stays in 0-1.
+      confidence = 0.4 + confidence * 0.6;
+
       // Boost confidence if structural fingerprint matches any query hints.
+      // Applied after scaling so the overall result remains in the 0-1 range.
       if (query.role || query.tagName) {
         const fp = computeFingerprint(el.element);
         const roleMatch = query.role ? fp.role === query.role : false;
@@ -294,9 +299,6 @@ export class EscalatingResolver {
         if (roleMatch) confidence = Math.min(1, confidence + 0.15);
         if (tagMatch) confidence = Math.min(1, confidence + 0.1);
       }
-
-      // Scale to 0.4-1.0 range (pure spatial match floors at 0.4).
-      confidence = 0.4 + confidence * 0.6;
 
       if (confidence > bestConfidence) {
         bestConfidence = confidence;
@@ -329,11 +331,15 @@ export class EscalatingResolver {
   /**
    * Derive a logical name from a query for CTR lookup.
    * Returns null if no usable identifier is present.
+   *
+   * Priority: id > ariaLabel > text.
+   * ariaLabel is preferred over text because it is a stable semantic identifier
+   * that survives localisation and copy changes; display text may be dynamic.
    */
   private queryToLogicalName(query: ElementQuery): string | null {
     if (typeof query.id === "string") return query.id;
-    if (query.text !== undefined) return query.text;
     if (query.ariaLabel !== undefined) return query.ariaLabel;
+    if (query.text !== undefined) return query.text;
     return null;
   }
 
@@ -365,13 +371,15 @@ export class EscalatingResolver {
     result: TierResult | null,
     startedAt: number,
   ): void {
+    // Capture once so timestamp and durationMs are consistent.
+    const now = Date.now();
     const event: EscalationEvent = {
-      timestamp: Date.now(),
+      timestamp: now,
       query,
       tier,
       resolvedElementId: result?.elementId,
       confidence: result?.confidence,
-      durationMs: Date.now() - startedAt,
+      durationMs: now - startedAt,
     };
     this.telemetry.emit(event);
   }

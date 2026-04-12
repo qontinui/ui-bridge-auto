@@ -65,9 +65,15 @@ export interface RefRecord {
 // Escalation
 // ---------------------------------------------------------------------------
 
-/** The five resolution tiers in the escalation chain. */
+/**
+ * The resolution tiers that can appear in an emitted `EscalationEvent`.
+ *
+ * Tier 1 (dom-query / deterministic) is intentionally absent: when the
+ * deterministic path succeeds the resolver returns immediately without
+ * emitting a telemetry event. An event is only emitted when escalation
+ * actually fires, so `"dom-query"` can never appear as an emitted tier.
+ */
 export type EscalationTier =
-  | "dom-query"
   | "ctr"
   | "search-engine"
   | "accessibility-tree"

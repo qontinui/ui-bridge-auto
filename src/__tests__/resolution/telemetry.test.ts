@@ -6,7 +6,7 @@ function createEvent(overrides?: Partial<EscalationEvent>): EscalationEvent {
   return {
     timestamp: Date.now(),
     query: { role: "button" },
-    tier: "dom-query",
+    tier: "accessibility-tree",
     durationMs: 10,
     ...overrides,
   };
