@@ -487,6 +487,25 @@ export {
   type StrategyContext,
 } from "./healing";
 
+// Resolution — ref IDs, escalation chain, telemetry
+export {
+  RefRegistry,
+  type RefRegistryOptions,
+  type RefId,
+  type ResolvedRef,
+  RefInvalidatedError,
+  type RefInvalidationReason,
+  type RefRecord,
+  EscalatingResolver,
+  type EscalatingResolverConfig,
+  type EscalationTier,
+  type EscalationEvent,
+  type ResolutionTelemetryEmitter,
+  type EscalationConfig,
+  NoopTelemetryEmitter,
+  CallbackTelemetryEmitter,
+} from "./resolution";
+
 // Static state machine builder — DEPRECATED: replaced by spec-driven generation.
 // The static-builder module is no longer exported. Use spec-driven state machine
 // generation instead.

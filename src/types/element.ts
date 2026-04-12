@@ -190,6 +190,10 @@ export interface AutomationElement {
   depth: number;
   /** Parent element's semantic type, if available. */
   parentType?: string;
+
+  /** Stable reference ID assigned at snapshot time. Present only when
+   *  the snapshot was created through a ref-aware capture path. */
+  refId?: string;
 }
 
 // ---------------------------------------------------------------------------
