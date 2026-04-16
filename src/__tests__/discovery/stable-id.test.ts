@@ -143,4 +143,75 @@ describe("generateStableId", () => {
     const id2 = generateStableId(el);
     expect(id1).toBe(id2);
   });
+
+  it("prefers aria-label over textContent for slug source", () => {
+    const el = document.createElement("button");
+    el.setAttribute("aria-label", "Generate with AI spec-brief");
+    el.textContent = "Some visible label that changes";
+    document.body.appendChild(el);
+
+    const stableId = generateStableId(el);
+    expect(stableId).toContain("button");
+    expect(stableId).toContain("generate-with-ai-spec-brief");
+    expect(stableId).not.toContain("some-visible-label");
+  });
+
+  it("prefers title over textContent when aria-label is absent", () => {
+    const el = document.createElement("button");
+    el.setAttribute("title", "Generate with AI spec-brief");
+    el.textContent = "icon";
+    document.body.appendChild(el);
+
+    const stableId = generateStableId(el);
+    expect(stableId).toContain("button");
+    expect(stableId).toContain("generate-with-ai-spec-brief");
+    expect(stableId).not.toContain("icon");
+    // Must NOT contain a positional -1/-2 integer suffix
+    expect(stableId).not.toMatch(/-\d+$/);
+  });
+
+  it("does not append positional integer when no collision context is provided", () => {
+    const el = document.createElement("button");
+    el.textContent = "Save";
+    document.body.appendChild(el);
+
+    const stableId = generateStableId(el);
+    // Used to be 'button-save-root-2' style with positional drift; now plain.
+    expect(stableId).not.toMatch(/-\d+$/);
+  });
+
+  it("disambiguates collisions with a stable DOM-path hash (not positional)", () => {
+    const a = document.createElement("button");
+    a.setAttribute("title", "Generate");
+    const b = document.createElement("button");
+    b.setAttribute("title", "Generate");
+    document.body.appendChild(a);
+    document.body.appendChild(b);
+
+    const issued = new Set<string>();
+    const idA = generateStableId(a, issued);
+    issued.add(idA);
+    const idB = generateStableId(b, issued);
+
+    expect(idA).not.toBe(idB);
+    // First one has no hash suffix; second has a 6-char hex hash suffix.
+    expect(idA).toMatch(/^button-generate-root$/);
+    expect(idB).toMatch(/^button-generate-root-[0-9a-f]{6}$/);
+  });
+
+  it("collision hash is stable across repeated calls (deterministic)", () => {
+    const a = document.createElement("button");
+    a.setAttribute("title", "Run");
+    const b = document.createElement("button");
+    b.setAttribute("title", "Run");
+    document.body.appendChild(a);
+    document.body.appendChild(b);
+
+    const issued1 = new Set<string>([generateStableId(a)]);
+    const issued2 = new Set<string>([generateStableId(a)]);
+    const idB1 = generateStableId(b, issued1);
+    const idB2 = generateStableId(b, issued2);
+
+    expect(idB1).toBe(idB2);
+  });
 });

@@ -11,6 +11,59 @@ import {
   type MouseActionParams,
 } from "./dom-helpers";
 
+// ---------------------------------------------------------------------------
+// Click retargeting — handle non-interactive wrappers around real buttons.
+//
+// Common case: React toggle rendered as <div><button>...</button></div> with
+// the outer <div> carrying the title/aria-label. A native .click() on the
+// wrapper does not bubble into React's SyntheticEvent delegation because the
+// onClick is attached to the inner <button>. We detect this case and retarget
+// the click to the single interactive descendant (if unambiguous).
+// ---------------------------------------------------------------------------
+
+const INTERACTIVE_SELECTOR =
+  'button, a, [role="button"], [role="link"], [role="switch"], ' +
+  '[role="checkbox"], [role="tab"], [role="menuitem"], ' +
+  'input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+function isInteractive(el: HTMLElement): boolean {
+  if (
+    el.tagName === "BUTTON" ||
+    el.tagName === "A" ||
+    el.tagName === "INPUT" ||
+    el.tagName === "SELECT" ||
+    el.tagName === "TEXTAREA"
+  )
+    return true;
+  const role = el.getAttribute("role");
+  if (
+    role === "button" ||
+    role === "link" ||
+    role === "switch" ||
+    role === "checkbox" ||
+    role === "tab" ||
+    role === "menuitem"
+  )
+    return true;
+  const tabIndex = el.getAttribute("tabindex");
+  if (tabIndex !== null && tabIndex !== "-1") return true;
+  return false;
+}
+
+/**
+ * If `el` itself is interactive, return it unchanged. Otherwise, if there is
+ * exactly one interactive descendant, retarget to it. If there are zero or
+ * multiple interactive descendants, return the original element (ambiguity
+ * means the caller's selector should be narrower — don't guess).
+ *
+ * Exported for unit testing. Not part of the public API.
+ */
+export function retargetForClick(el: HTMLElement): HTMLElement {
+  if (isInteractive(el)) return el;
+  const candidates = Array.from(el.querySelectorAll<HTMLElement>(INTERACTIVE_SELECTOR));
+  return candidates.length === 1 ? candidates[0] : el;
+}
+
 /**
  * 1. Click — mousedown + mouseup + native click() + anchor fallback.
  *
@@ -18,16 +71,23 @@ import {
  * dispatchEvent(new MouseEvent('click')) does NOT trigger React onClick
  * because React 17+ delegates events at the root and doesn't intercept
  * programmatically dispatched events.
+ *
+ * When `element` is a non-interactive wrapper with a single interactive
+ * descendant (e.g., <div title="..."><button/></div>), we retarget the click
+ * to the descendant so React's SyntheticEvent delegation fires. All other
+ * event dispatch still uses the original element so hover / focus semantics
+ * are preserved if the wrapper has its own handlers.
  */
 export function performClick(element: HTMLElement, params?: MouseActionParams): void {
+  const clickTarget = retargetForClick(element);
   element.dispatchEvent(createMouseEvent("mousedown", element, params));
   element.dispatchEvent(createMouseEvent("mouseup", element, params));
-  element.click();
+  clickTarget.click();
 
   // Anchor navigation fallback: native click already handles this,
   // but keep for elements inside anchors where element !== anchor.
-  const anchor = element.closest("a");
-  if (anchor && anchor !== element && anchor.hasAttribute("href")) {
+  const anchor = clickTarget.closest("a");
+  if (anchor && anchor !== clickTarget && anchor.hasAttribute("href")) {
     anchor.click();
   }
 }
@@ -43,6 +103,9 @@ export function performDoubleClick(element: HTMLElement, params?: MouseActionPar
 
 /**
  * 3. Right-click — mousedown(right) + mouseup(right) + contextmenu(right).
+ *
+ * Right-click does not use native .click(), so retargeting is not applied —
+ * the contextmenu event bubbles from the original element naturally.
  */
 export function performRightClick(element: HTMLElement, params?: MouseActionParams): void {
   const opts: MouseActionParams = { ...params, button: "right" };
@@ -55,7 +118,8 @@ export function performRightClick(element: HTMLElement, params?: MouseActionPara
  * 4. Middle-click — mousedown(middle) + mouseup(middle) + auxclick(middle).
  *
  * Browsers fire 'auxclick' (not 'click') for non-primary button clicks.
- * React's onAuxClick handler listens for this event type.
+ * React's onAuxClick handler listens for this event type. Like right-click,
+ * this path does not use native .click() and so does not retarget.
  */
 export function performMiddleClick(element: HTMLElement, params?: MouseActionParams): void {
   const opts: MouseActionParams = { ...params, button: "middle" };

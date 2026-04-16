@@ -65,10 +65,14 @@ export function createHealingHandlers(registry: RegistryLike) {
     > => {
       try {
         const elements = registry.getAllElements();
-        const result = elements.map((el) => ({
-          elementId: el.id,
-          stableId: generateStableId(el.element),
-        }));
+        // Track ids issued so far so generateStableId can disambiguate
+        // collisions with a DOM-path hash instead of a positional index.
+        const issued = new Set<string>();
+        const result = elements.map((el) => {
+          const stableId = generateStableId(el.element, issued);
+          issued.add(stableId);
+          return { elementId: el.id, stableId };
+        });
         return ok(result);
       } catch (err) {
         return fail(err);
