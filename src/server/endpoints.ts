@@ -78,7 +78,9 @@ export function createAutoHandlers(config: AutoHandlersConfig) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const hasTauri = !!(globalThis as any).__TAURI__;
     if (hasTauri) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { TauriBaselineStore } = require("../visual/tauri-baseline-store");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { ScreenshotAssertionManager } = require("../visual/screenshot-assertion");
       screenshotManager = new ScreenshotAssertionManager(
         new TauriBaselineStore("visual-regression"),
