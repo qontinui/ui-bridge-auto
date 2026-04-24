@@ -6,6 +6,7 @@
  * and evaluating simple comparison expressions.
  */
 
+import { classString } from '@qontinui/ui-bridge';
 import type { ElementQuery, QueryableElement } from '../core/element-query';
 import { findFirst } from '../core/element-query';
 
@@ -88,7 +89,11 @@ export function extractValue(
       return element.element.tagName.toLowerCase();
 
     case 'className':
-      return element.element.className ?? '';
+      // SVG-safe: `Element.className` is SVGAnimatedString on SVG/MathML,
+      // not string. Returning the raw value to callers that later do
+      // `.split(...)` or other string ops produces
+      // "className.split is not a function".
+      return classString(element.element);
 
     case 'role':
       return element.element.getAttribute('role') ?? '';

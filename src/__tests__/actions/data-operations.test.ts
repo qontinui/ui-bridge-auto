@@ -65,6 +65,25 @@ describe("extractValue", () => {
     const result = extractValue(el, "attribute:data-missing");
     expect(result).toBeNull();
   });
+
+  it("'className' returns a plain string even for SVG elements", () => {
+    // Regression: SVGElement.className is SVGAnimatedString, not string.
+    // Returning that to callers makes subsequent `.split(...)` etc. throw
+    // ("className.split is not a function" from get_snapshot).
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "icon primary");
+    const el: import("../../core/element-query").QueryableElement = {
+      id: "svg-1",
+      element: svg as unknown as HTMLElement,
+      type: "generic",
+      getState: () => ({ visible: true, enabled: true }),
+    };
+    const result = extractValue(el, "className");
+    expect(typeof result).toBe("string");
+    expect(result).toBe("icon primary");
+    // The critical invariant: result must support string ops.
+    expect(() => (result as string).split(/\s+/)).not.toThrow();
+  });
 });
 
 // ---------------------------------------------------------------------------
