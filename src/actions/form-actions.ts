@@ -245,15 +245,62 @@ export function performCheck(element: HTMLElement, checked: boolean): void {
 }
 
 /**
- * 15. Toggle — toggle checked state of checkbox or ARIA switch.
+ * 15. Toggle — generic open/close toggle action.
+ *
+ * Dispatches based on element type so disclosure widgets become drivable
+ * without a separate action verb (UI Bridge testability plan, Item 2):
+ *
+ * - `<input type="checkbox">`: flip `checked` + fire `change`.
+ * - `<details>`: flip the `open` property (not the attribute) and dispatch
+ *   the native `toggle` event so React `onToggle` handlers observe the change.
+ * - `<dialog>`: call `close()` / `showModal()` depending on current state.
+ * - Anything carrying `aria-expanded`: flip the attribute and fire a
+ *   synthetic click so framework click handlers run and manage the
+ *   associated visual collapse.
+ * - `role="switch"`: synthetic click (unchanged legacy path).
+ * - Fallback: synthetic click — catches the "I forgot to mark this as a
+ *   disclosure but the click handler does the right thing" case.
  */
 export function performToggle(element: HTMLElement): void {
   if (element instanceof HTMLInputElement && element.type === "checkbox") {
     element.checked = !element.checked;
     element.dispatchEvent(new Event("change", { bubbles: true }));
-  } else if (element.getAttribute("role") === "switch") {
-    element.click();
+    return;
   }
+
+  if (element instanceof HTMLDetailsElement) {
+    element.open = !element.open;
+    element.dispatchEvent(new Event("toggle", { bubbles: false }));
+    return;
+  }
+
+  if (typeof HTMLDialogElement !== "undefined" && element instanceof HTMLDialogElement) {
+    if (element.open) {
+      element.close();
+    } else if (typeof element.showModal === "function") {
+      element.showModal();
+    } else {
+      element.setAttribute("open", "");
+      element.dispatchEvent(new Event("close", { bubbles: false }));
+    }
+    return;
+  }
+
+  const ariaExpanded = element.getAttribute("aria-expanded");
+  if (ariaExpanded !== null) {
+    const next = ariaExpanded === "true" ? "false" : "true";
+    element.setAttribute("aria-expanded", next);
+    element.click();
+    return;
+  }
+
+  if (element.getAttribute("role") === "switch") {
+    element.click();
+    return;
+  }
+
+  // Last-resort fallback — matches the SDK-side DefaultActionExecutor path.
+  element.click();
 }
 
 /**

@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && test -s dist/index.d.ts",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
