@@ -137,14 +137,7 @@ export async function extractToVariable(
     );
   }
 
-  const el = elements.find((e) => e.id === result.id);
-  if (!el) {
-    throw new Error(
-      `extractToVariable: element "${result.id}" disappeared from registry`,
-    );
-  }
-
-  variables[variableName] = extractValue(el, property);
+  variables[variableName] = extractValue(result, property);
 }
 
 // ---------------------------------------------------------------------------
@@ -228,10 +221,10 @@ export function evaluateExpression(
 ): boolean {
   switch (operator) {
     case '==':
-      return actual == expected;  
+      return actual === expected;
 
     case '!=':
-      return actual != expected;  
+      return actual !== expected;
 
     case '>':
       return Number(actual) > Number(expected);
