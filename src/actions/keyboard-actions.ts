@@ -45,6 +45,24 @@ export async function performType(element: HTMLElement, params?: TypeParams): Pr
     throw new Error("Type action requires an input or textarea element");
   }
 
+  // Validate that the caller provided the required `text` parameter. Without
+  // this guard, a missing or misspelled key (callers commonly send `value`
+  // because that's what `select`/`setValue` use) produces a silent no-op:
+  // `params?.text || ""` becomes the empty string, the loop types zero
+  // characters, and the action returns success — an invisible failure mode
+  // that costs minutes to diagnose. Throw a descriptive error instead.
+  const paramsRecord = params as unknown as Record<string, unknown> | undefined;
+  if (typeof params?.text !== "string") {
+    const hasValueAlias =
+      paramsRecord != null && typeof paramsRecord["value"] === "string";
+    const hint = hasValueAlias
+      ? " Got `value` — the `type` action expects `text` instead. (Tip: `select`/`setValue` use `value`, but `type` uses `text`.)"
+      : "";
+    throw new Error(
+      `Type action requires a 'text' string parameter (the characters to type into the field).${hint}`,
+    );
+  }
+
   const nativeSetter = getNativeSetter(element);
 
   element.focus();
@@ -59,7 +77,7 @@ export async function performType(element: HTMLElement, params?: TypeParams): Pr
     notifyReactValueChange(element, prevClear);
   }
 
-  const text = params?.text || "";
+  const text = params.text;
   const delay = params?.delay || 0;
 
   for (const char of text) {
@@ -91,7 +109,14 @@ export async function performType(element: HTMLElement, params?: TypeParams): Pr
  * keyboard events (xterm.js terminals, CodeMirror, Monaco, canvas games).
  */
 export async function performSendKeys(element: HTMLElement, params?: SendKeysParams): Promise<void> {
-  if (!params?.keys?.length) return;
+  // Validate that the caller provided a non-empty `keys` array. Without this
+  // guard, a missing array (or `value: "Enter"` mistake) returned silent
+  // success, making the misuse undebuggable.
+  if (!Array.isArray(params?.keys) || params.keys.length === 0) {
+    throw new Error(
+      "sendKeys action requires a non-empty 'keys' array of {key: '<KeyName>', modifiers?} descriptors. (Example: { keys: [{ key: 'Enter' }] }.)",
+    );
+  }
 
   element.focus();
   const delay = params.delay || 0;

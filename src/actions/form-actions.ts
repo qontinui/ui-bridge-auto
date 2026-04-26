@@ -77,6 +77,16 @@ export function performClear(element: HTMLElement): void {
  * finds the dropdown, and clicks the matching option.
  */
 export async function performSelect(element: HTMLElement, params?: SelectParams): Promise<void> {
+  // Validate that the caller provided a `value`. Without this guard, a missing
+  // or misspelled key produces `[undefined]` below, no <option> matches, and
+  // the action returns success with the select unchanged — an invisible
+  // failure mode.
+  if (params?.value === undefined || params.value === null) {
+    throw new Error(
+      "select action requires a 'value' parameter (string or string[]) — the option value(s) to select.",
+    );
+  }
+
   // Handle Radix/headless combobox elements (render as <button> with role="combobox")
   if (!(element instanceof HTMLSelectElement)) {
     const role = element.getAttribute("role");
