@@ -319,7 +319,13 @@ export function performToggle(element: HTMLElement): void {
 export function performSetValue(element: HTMLElement, params?: { value: string }): void {
   const value = params?.value;
   if (value === undefined) {
-    throw new Error('setValue requires a "value" parameter');
+    const paramsRecord = params as unknown as Record<string, unknown> | undefined;
+    const hasTextAlias =
+      paramsRecord != null && typeof paramsRecord["text"] === "string";
+    const hint = hasTextAlias
+      ? " Got `text` — `setValue` expects `value` instead. (Tip: `type` uses `text`, but `setValue`/`select` use `value`.)"
+      : "";
+    throw new Error(`setValue requires a 'value' parameter.${hint}`);
   }
 
   if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {

@@ -137,7 +137,14 @@ export async function extractToVariable(
     );
   }
 
-  variables[variableName] = extractValue(result, property);
+  const element = elements.find((el) => el.id === result.id);
+  if (!element) {
+    throw new Error(
+      `extractToVariable: matched id "${result.id}" not present in registry (race condition?)`,
+    );
+  }
+
+  variables[variableName] = extractValue(element, property);
 }
 
 // ---------------------------------------------------------------------------

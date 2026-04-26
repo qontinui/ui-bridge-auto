@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   extractValue,
+  extractToVariable,
   interpolate,
   evaluateExpression,
 } from "../../actions/data-operations";
@@ -83,6 +84,39 @@ describe("extractValue", () => {
     expect(result).toBe("icon primary");
     // The critical invariant: result must support string ops.
     expect(() => (result as string).split(/\s+/)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractToVariable
+// ---------------------------------------------------------------------------
+
+describe("extractToVariable", () => {
+  it("stores the extracted property under the variable name", async () => {
+    const el = createInput("Email", { state: { value: "user@example.com" } });
+    const registry = { getAllElements: () => [el] };
+    const variables: Record<string, unknown> = {};
+    await extractToVariable(registry, { tagName: "input" }, "value", "userEmail", variables);
+    expect(variables.userEmail).toBe("user@example.com");
+  });
+
+  it("looks up the live element (so getState/element are accessible)", async () => {
+    // Regression for typecheck bug: extractValue takes QueryableElement, not
+    // QueryResult. Confirms the impl resolves the matched id back to the
+    // registry element rather than passing the thin descriptor.
+    const el = createButton("Submit Order");
+    const registry = { getAllElements: () => [el] };
+    const variables: Record<string, unknown> = {};
+    await extractToVariable(registry, { tagName: "button" }, "text", "label", variables);
+    expect(variables.label).toBe("Submit Order");
+  });
+
+  it("throws when no element matches", async () => {
+    const registry = { getAllElements: () => [] };
+    const variables: Record<string, unknown> = {};
+    await expect(
+      extractToVariable(registry, { tagName: "button" }, "text", "x", variables),
+    ).rejects.toThrow(/no element found/);
   });
 });
 
