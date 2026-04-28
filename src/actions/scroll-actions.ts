@@ -136,11 +136,52 @@ export async function performScroll(
 
 /**
  * 13. ScrollIntoView — scrollIntoView with alignment options.
+ *
+ * Returns a small status object so callers can tell whether a scroll
+ * actually happened. When the element is already fully inside the viewport
+ * we skip the underlying `scrollIntoView()` call entirely and report
+ * `alreadyVisible: true, scrolled: false`. This makes scrollIntoView a
+ * no-op-success in the common pre-click case (an agent eagerly scrolls a
+ * button into view before clicking it, even though the button was already
+ * visible), instead of producing a confusing failure log when downstream
+ * detectors observe "no change".
+ *
+ * Only fully-visible elements short-circuit: an element that is partially
+ * clipped still gets the scroll so its `block`/`inline` alignment can take
+ * effect. Element-not-in-DOM is *not* handled here — the caller's element
+ * resolution has already failed in that case.
  */
-export function performScrollIntoView(element: HTMLElement, params?: ScrollIntoViewParams): void {
+export function performScrollIntoView(
+  element: HTMLElement,
+  params?: ScrollIntoViewParams,
+): { alreadyVisible: boolean; scrolled: boolean } {
+  // Only honour the early-return when we have a usable viewport. In jsdom
+  // and other non-browser hosts `window.innerWidth/innerHeight` may be 0
+  // and `getBoundingClientRect` is a stub — fall through to the native
+  // call so the legacy semantics are preserved.
+  if (
+    typeof window !== "undefined" &&
+    window.innerWidth > 0 &&
+    window.innerHeight > 0 &&
+    typeof element.getBoundingClientRect === "function"
+  ) {
+    const rect = element.getBoundingClientRect();
+    const fullyVisible =
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rect.top >= 0 &&
+      rect.left >= 0 &&
+      rect.bottom <= window.innerHeight &&
+      rect.right <= window.innerWidth;
+    if (fullyVisible) {
+      return { alreadyVisible: true, scrolled: false };
+    }
+  }
+
   element.scrollIntoView({
     behavior: params?.smooth ? "smooth" : "auto",
     block: params?.block || "center",
     inline: params?.inline || "nearest",
   });
+  return { alreadyVisible: false, scrolled: true };
 }
