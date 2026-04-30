@@ -510,6 +510,29 @@ export {
 // The static-builder module is no longer exported. Use spec-driven state machine
 // generation instead.
 
+// IR builder — Vite plugin + extractor that walks `<State>` / `<TransitionTo>`
+// JSX declarations and emits a deterministic IRDocument JSON file.
+// See src/ir-builder/index.ts.
+export type {
+  ExtractedDeclaration,
+  UnsupportedPropMarker,
+  BuildIRDocumentInput,
+  IRBuildResult,
+  IRBuildWarning,
+  IRBuilderPluginOptions,
+  VitePluginLike,
+} from "./ir-builder";
+export {
+  extractIRDeclarations,
+  isUnsupportedProp,
+  UNSUPPORTED_PROP,
+  buildIRDocument,
+  buildIRDocumentWithWarnings,
+  serializeIRDocument,
+  IRBuildError,
+  uiBridgeIRPlugin,
+} from "./ir-builder";
+
 // Visual — highlights, OCR assertions, coordinate translation, screenshot comparison
 export {
   ElementHighlightManager,

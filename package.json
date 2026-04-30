@@ -22,6 +22,7 @@
     "format": "prettier --write \"src/**/*.ts\""
   },
   "dependencies": {
+    "@qontinui/shared-types": "file:../qontinui-schemas/ts",
     "@qontinui/ui-bridge": "file:../ui-bridge/packages/ui-bridge"
   },
   "devDependencies": {
