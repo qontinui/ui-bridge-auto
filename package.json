@@ -10,6 +10,11 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./ir-builder": {
+      "import": "./dist/ir-builder/index.mjs",
+      "require": "./dist/ir-builder/index.js",
+      "types": "./dist/ir-builder/index.d.ts"
     }
   },
   "bin": {

@@ -510,28 +510,18 @@ export {
 // The static-builder module is no longer exported. Use spec-driven state machine
 // generation instead.
 
-// IR builder — Vite plugin + extractor that walks `<State>` / `<TransitionTo>`
-// JSX declarations and emits a deterministic IRDocument JSON file.
-// See src/ir-builder/index.ts.
-export type {
-  ExtractedDeclaration,
-  UnsupportedPropMarker,
-  BuildIRDocumentInput,
-  IRBuildResult,
-  IRBuildWarning,
-  IRBuilderPluginOptions,
-  VitePluginLike,
-} from "./ir-builder";
-export {
-  extractIRDeclarations,
-  isUnsupportedProp,
-  UNSUPPORTED_PROP,
-  buildIRDocument,
-  buildIRDocumentWithWarnings,
-  serializeIRDocument,
-  IRBuildError,
-  uiBridgeIRPlugin,
-} from "./ir-builder";
+// IR builder is intentionally NOT re-exported from the main entry. It is a
+// build-time tool — vite-plugin.ts, build-project-ir.ts, cli.ts, and
+// migrate-cli.ts depend on `node:fs`, `node:path`, and `ts-morph`, which
+// must never reach a browser bundle. Consumers that need the IR builder
+// (build configs, codemods, CLIs) import it explicitly via the subpath:
+//
+//   import { uiBridgeIRPlugin } from "@qontinui/ui-bridge-auto/ir-builder";
+//
+// Pre-2026-05-01 this entry re-exported `./ir-builder`, which caused the
+// runner's `vite build` to pull `ts-morph` into the browser bundle (8000+
+// modules) and hang. See `qontinui-runner/vite.config.ts` for the source-
+// resolution alias that exposed the leak.
 
 // Visual — highlights, OCR assertions, coordinate translation, screenshot comparison
 export {

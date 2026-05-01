@@ -46,4 +46,22 @@ export default defineConfig([
       "@anthropic-ai/sdk",
     ],
   },
+  // ir-builder library subpath — exposes the Vite plugin / extractor / emitter
+  // / build-project-ir / drift comparator as `@qontinui/ui-bridge-auto/ir-builder`.
+  // Kept off the main entry (`src/index.ts`) so the Node-only deps (`node:fs`,
+  // `node:path`, `ts-morph`) don't leak into a browser bundle when the runner's
+  // Vite alias resolves the package to source.
+  {
+    entry: { "ir-builder/index": "src/ir-builder/index.ts" },
+    format: ["cjs", "esm"],
+    dts: { resolve: true },
+    clean: false,
+    sourcemap: true,
+    external: [
+      "@qontinui/ui-bridge",
+      "ts-morph",
+      "@ts-morph/common",
+      "@anthropic-ai/sdk",
+    ],
+  },
 ]);
