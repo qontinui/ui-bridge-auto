@@ -593,10 +593,20 @@ function runBatch(args: ParsedArgs, io: CliIO): number {
 // Script bootstrap
 // ---------------------------------------------------------------------------
 
-// Run only when invoked as a script, not when imported.
+// Run only when invoked as a script, not when imported. Detect via
+// `process.argv[1]` basename — tsup may bundle this module's exports into
+// other CLIs (e.g. `check-pairing.cjs` re-uses `findLegacySpecs`), in which
+// case `require.main === module` would still be true but the script we're
+// executing is something else.
+const invokedAs =
+  typeof process !== "undefined" && Array.isArray(process.argv) && process.argv[1] !== undefined
+    ? process.argv[1].replace(/\\/g, "/").split("/").pop() ?? ""
+    : "";
 const isMainModule =
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  typeof require !== "undefined" && require.main === (module as any);
+  typeof require !== "undefined" &&
+  require.main === (module as any) &&
+  /^migrate-cli(\.cjs)?$/.test(invokedAs);
 if (isMainModule) {
   process.exit(runMigrateCli());
 }

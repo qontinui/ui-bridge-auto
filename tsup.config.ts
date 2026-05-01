@@ -28,6 +28,7 @@ export default defineConfig([
     entry: {
       "ir-builder/cli": "src/ir-builder/cli.ts",
       "ir-builder/migrate-cli": "src/ir-builder/migrate-cli.ts",
+      "ir-builder/check-pairing": "src/ir-builder/check-pairing.ts",
     },
     format: ["cjs"],
     outExtension: () => ({ js: ".cjs" }),
