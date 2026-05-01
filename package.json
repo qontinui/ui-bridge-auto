@@ -12,6 +12,10 @@
       "types": "./dist/index.d.ts"
     }
   },
+  "bin": {
+    "ui-bridge-build-ir": "./dist/ir-builder/cli.cjs",
+    "migrate-uibridge-spec": "./dist/ir-builder/migrate-cli.cjs"
+  },
   "scripts": {
     "build": "tsup && test -s dist/index.d.ts",
     "dev": "tsup --watch",

@@ -51,3 +51,13 @@ export { buildProjectIR, writeProjectIR } from "./build-project-ir";
 // runtime snapshot. Consumed by section 7's drift-hypothesis correlation.
 export type { DriftEntry, DriftReport, RuntimeSnapshot } from "./drift";
 export { compareSpecToRuntime } from "./drift";
+
+// Phase A3 codemod CLI — legacy `*.spec.uibridge.json` -> per-page IR layout.
+export type { MigrationOutcome, SpecRouting } from "./migrate-cli";
+export {
+  derivePageIdFromBasename,
+  derivePageIdFromWebPath,
+  findLegacySpecs,
+  routeSpecPath,
+  runMigrateCli,
+} from "./migrate-cli";
