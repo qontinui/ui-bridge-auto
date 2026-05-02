@@ -623,3 +623,31 @@ export {
 
 // Section 8: re-export the helper from the discovery module's public surface.
 export { isOverlayCandidate } from "./discovery/overlay-detector";
+
+// Auto-regression generator — Section 9.
+export {
+  generateRegressionSuite,
+  serializeSuite,
+  deserializeSuite,
+  coverageOf,
+  deriveBaselineKey,
+  type RegressionSuite,
+  type RegressionCase,
+  type RegressionAssertion,
+  type StateActiveAssertion,
+  type ActionTargetResolvesAssertion,
+  type VisualGateAssertion,
+  type OverlayAssertion,
+  type AssertionOverlay,
+  type AssertionOverlayContext,
+  type GeneratorOptions,
+  type BaselineStoreMarker,
+  type CoverageReport,
+} from "./state/regression-generator";
+export {
+  visibilityOverlay,
+  tokenOverlay,
+  crossCheckOverlay,
+  type VisibilityOverlayOptions,
+  type CrossCheckOverlayOptions,
+} from "./state/regression-overlays";
