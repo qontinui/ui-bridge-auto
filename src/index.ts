@@ -521,6 +521,9 @@ export type {
   IRBuildWarning,
   IRBuilderPluginOptions,
   VitePluginLike,
+  MetroConfigLike,
+  MetroIRPluginOptions,
+  MetroIRWatcherHandle,
 } from "./ir-builder";
 export {
   extractIRDeclarations,
@@ -531,6 +534,8 @@ export {
   serializeIRDocument,
   IRBuildError,
   uiBridgeIRPlugin,
+  createMetroIRWatcher,
+  withUIBridgeIR,
 } from "./ir-builder";
 
 // Visual — highlights, OCR assertions, coordinate translation, screenshot comparison

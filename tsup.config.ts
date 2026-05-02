@@ -47,4 +47,22 @@ export default defineConfig([
       "@anthropic-ai/sdk",
     ],
   },
+  // Metro plugin — emitted as a standalone CJS file so consumers can require
+  // it directly from `metro.config.js` (which is CJS by Metro convention).
+  {
+    entry: {
+      "ir-builder/metro-plugin": "src/ir-builder/metro-plugin.ts",
+    },
+    format: ["cjs"],
+    outExtension: () => ({ js: ".cjs" }),
+    dts: false,
+    clean: false,
+    sourcemap: true,
+    external: [
+      "@qontinui/ui-bridge",
+      "ts-morph",
+      "@ts-morph/common",
+      "@anthropic-ai/sdk",
+    ],
+  },
 ]);

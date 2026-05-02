@@ -38,6 +38,15 @@ export type {
 } from "./vite-plugin";
 export { uiBridgeIRPlugin } from "./vite-plugin";
 
+// Metro plugin / prebuild path — same byte-stable IR emission as the Vite
+// plugin, but plumbed through Metro's config lifecycle for React Native.
+export type {
+  MetroConfigLike,
+  MetroIRPluginOptions,
+  MetroIRWatcherHandle,
+} from "./metro-plugin";
+export { createMetroIRWatcher, withUIBridgeIR } from "./metro-plugin";
+
 // Framework-agnostic project-level builder (used by the Vite plugin AND the
 // Next.js / standalone CLI path — single source of truth so output is
 // byte-identical across both build paths).
