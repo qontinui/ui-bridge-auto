@@ -460,6 +460,7 @@ export {
   ReplayEngine,
   type ReplayOptions,
   type ReplayResult,
+  type ReplayDivergence,
   RecordingPipeline,
   PlaybookGenerator,
   type Playbook,

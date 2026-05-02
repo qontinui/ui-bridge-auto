@@ -11,6 +11,7 @@ import type { ActionExecutorLike } from "../state/transition-executor";
 import type {
   RecordedEvent,
   RecordedAction,
+  RecordedEventId,
   RecordingSession,
 } from "./session-recorder";
 
@@ -34,12 +35,45 @@ export interface ReplayOptions {
   onEvent?: (event: RecordedEvent, index: number, total: number) => void;
 }
 
+/**
+ * A single causal-trace divergence between an original recording and what was
+ * observed (or could be observed) during replay.
+ *
+ * Divergences are non-fatal observations layered on top of the existing
+ * `errors` channel — execution still proceeds. Consumers can use these to
+ * grade replay fidelity, gate auto-healing, or flag flakey workflows.
+ */
+export interface ReplayDivergence {
+  /** Index of the original event in `session.events` that diverged. */
+  eventIndex: number;
+  /** Category of divergence. */
+  kind:
+    | "missing"
+    | "extra"
+    | "causedByMismatch"
+    | "predicateOutcomeMismatch"
+    | "stateChangeMismatch";
+  /** Relevant subset of the original event for this divergence. */
+  expected: unknown;
+  /** What replay actually observed; `null` when the expected event is missing. */
+  actual: unknown;
+  /** Human-readable summary suitable for logs / dev UI. */
+  message: string;
+}
+
 /** Result of a replay execution. */
 export interface ReplayResult {
   success: boolean;
   eventsReplayed: number;
   eventsTotal: number;
   errors: Array<{ eventIndex: number; error: string }>;
+  /**
+   * Causal-trace divergences detected during replay. Empty when the recording
+   * is internally consistent and replay produced no shape-level surprises.
+   * Independent of `errors`: a session can have zero errors and still report
+   * divergences (or vice versa).
+   */
+  divergences: ReplayDivergence[];
   durationMs: number;
 }
 
@@ -77,7 +111,24 @@ export class ReplayEngine {
    *
    * Iterates through all events in the session. Action events are executed
    * via the executor; other event types are skipped (but reported via the
-   * onEvent callback). Returns a summary of the replay.
+   * onEvent callback). Returns a summary of the replay including any causal
+   * divergences detected.
+   *
+   * Divergence detection (v1):
+   *   - Validates static causal-chain integrity: every `causedBy` reference
+   *     must point to an event recorded earlier in the same session. Any
+   *     forward or dangling reference is reported as a `causedByMismatch`
+   *     divergence before action execution begins.
+   *
+   * TODO (v2):
+   *   - **Predicate-outcome divergence:** when the recording has
+   *     `predicateEval` events caused by a replayed action, re-evaluate the
+   *     predicate against the live snapshot and compare `matched`. Requires
+   *     a predicate-evaluator dependency that v1 does not own.
+   *   - **State-change shape divergence:** compare the *shape* (count and
+   *     kind) of follow-up events caused by each replayed action against
+   *     what was observed live. Requires hooking the executor or registry
+   *     for in-replay event capture, which is out of scope for v1.
    */
   async replay(
     session: RecordingSession,
@@ -86,6 +137,7 @@ export class ReplayEngine {
     const opts: ReplayOptions = { ...DEFAULT_OPTIONS, ...options };
     const startTime = Date.now();
     const errors: Array<{ eventIndex: number; error: string }> = [];
+    const divergences: ReplayDivergence[] = this.validateCausalChain(session);
     let eventsReplayed = 0;
 
     this.replaying = true;
@@ -146,8 +198,51 @@ export class ReplayEngine {
       eventsReplayed,
       eventsTotal: session.events.length,
       errors,
+      divergences,
       durationMs: Date.now() - startTime,
     };
+  }
+
+  /**
+   * Validate the causal-chain integrity of a session.
+   *
+   * Walks events in recorded order and tracks the set of ids seen so far.
+   * Every non-null `causedBy` must reference an id that has already been
+   * seen — a forward reference (or a reference to an id that doesn't exist
+   * at all) indicates the recording was assembled out-of-order or is
+   * missing the parent event, and is reported as a `causedByMismatch`
+   * divergence.
+   *
+   * `causedBy` of `undefined` or `null` is a root-cause marker and always
+   * valid, so old fixtures recorded before the causal-trace work continue
+   * to validate cleanly.
+   */
+  private validateCausalChain(
+    session: RecordingSession,
+  ): ReplayDivergence[] {
+    const divergences: ReplayDivergence[] = [];
+    const seen = new Set<RecordedEventId>();
+
+    for (let i = 0; i < session.events.length; i++) {
+      const event = session.events[i];
+      const cause = event.causedBy;
+
+      if (cause !== undefined && cause !== null && !seen.has(cause)) {
+        divergences.push({
+          eventIndex: i,
+          kind: "causedByMismatch",
+          expected: { id: event.id, causedBy: cause },
+          actual: null,
+          message:
+            `Event ${event.id} (index ${i}) references causedBy=${cause}, ` +
+            `which has not been seen earlier in the session.`,
+        });
+      }
+
+      seen.add(event.id);
+    }
+
+    return divergences;
   }
 
   /** Cancel an in-progress replay. */

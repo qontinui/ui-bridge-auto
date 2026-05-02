@@ -20,6 +20,7 @@ export {
   ReplayEngine,
   type ReplayOptions,
   type ReplayResult,
+  type ReplayDivergence,
 } from "./replay-engine";
 
 export { RecordingPipeline } from "./recording-pipeline";
