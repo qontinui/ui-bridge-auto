@@ -467,6 +467,22 @@ export {
   type PlaybookStep,
 } from "./recording";
 
+// Counterfactual / model-checking — Section 6
+export {
+  exploreCounterfactual,
+  CounterfactualError,
+  buildCausalIndex,
+  forwardClosure,
+  backwardClosure,
+  type CausalIndex,
+  type Perturbation,
+  type DivergenceKind,
+  type DivergenceLike,
+  type CounterfactualDivergence,
+  type FragilityScore,
+  type CounterfactualReport,
+} from "./counterfactual";
+
 // Error recovery & self-healing
 export {
   classifyError,
