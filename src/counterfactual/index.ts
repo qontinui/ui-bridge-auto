@@ -17,6 +17,7 @@ export {
 export type {
   Perturbation,
   DivergenceKind,
+  RegressionFailureKind,
   DivergenceLike,
   CounterfactualDivergence,
   FragilityScore,
