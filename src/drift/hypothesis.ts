@@ -141,6 +141,18 @@ function resolveDivergence(
   session: RecordingSession,
   ir: IRDocument | undefined,
 ): ResolvedDivergence {
+  // Prefer caller-supplied provenance when present. Section 10 regression
+  // failures populate `predicateId` and/or `sourceFile` directly from IR
+  // (their `eventIndex` is `-1`, so the session lookup would yield `null`
+  // for both). Replay/counterfactual divergences carry neither field and
+  // fall through to the session-events path.
+  if (divergence.sourceFile !== undefined || divergence.predicateId !== undefined) {
+    const predicateId = divergence.predicateId ?? null;
+    const sourceFile =
+      divergence.sourceFile ??
+      (predicateId !== null ? resolveSourceFile(predicateId, ir) : null);
+    return { divergence, predicateId, sourceFile };
+  }
   const event = session.events[divergence.eventIndex];
   const predicateId = extractPredicateId(event);
   const sourceFile = predicateId !== null
