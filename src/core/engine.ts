@@ -504,15 +504,24 @@ export class AutomationEngine {
       this.registry,
     );
 
-    // Record to session if recording
+    // Record to session if recording. Capture the returned event id for each
+    // action so any future bridging code that observes derived events
+    // (state changes, element appear/disappear, predicate evals) inside the
+    // action's scope can attribute them via `recorder.withCause(actionId, ...)`.
+    // For now there is no synchronous bridging at this site — the action loop
+    // simply records each result and moves on — so capturing the id is a
+    // no-op preparatory step.
     if (this.recorder.isRecording) {
       for (const result of results) {
-        this.recorder.recordAction({
+        const actionId = this.recorder.recordAction({
           actionType: result.action,
           elementId: result.elementId ?? "unknown",
           success: result.success,
           durationMs: result.durationMs,
         });
+        // Reserve the id for future causality bridging. Void to satisfy
+        // no-unused-vars without changing runtime behavior.
+        void actionId;
       }
     }
 

@@ -31,15 +31,22 @@ export function createActionHandlers(
           body.options,
         );
 
-        // Record to engine's recorder if active
+        // Record to engine's recorder if active. Capture each event id so any
+        // bridging code that fires derived events (state changes, element
+        // appear/disappear, predicate evals) inside an action's scope can
+        // attribute them via `recorder.withCauseAsync(actionId, ...)`.
+        // The HTTP handler currently has no post-record activity per action
+        // — ids are captured for future causality wiring without behavior
+        // change.
         if (recorder.isRecording) {
           for (const result of results) {
-            recorder.recordAction({
+            const actionId = recorder.recordAction({
               actionType: result.action,
               elementId: result.elementId ?? "unknown",
               success: result.success,
               durationMs: result.durationMs,
             });
+            void actionId;
           }
         }
 
