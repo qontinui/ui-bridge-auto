@@ -480,6 +480,7 @@ export {
   type CausalIndex,
   type Perturbation,
   type DivergenceKind,
+  type RegressionFailureKind,
   type DivergenceLike,
   type CounterfactualDivergence,
   type FragilityScore,
@@ -651,3 +652,17 @@ export {
   type VisibilityOverlayOptions,
   type CrossCheckOverlayOptions,
 } from "./state/regression-overlays";
+
+// Self-diagnosis composer — Section 10.
+export {
+  diagnose,
+  serializeDiagnosis,
+  deserializeDiagnosis,
+  surfaceDiagnosis,
+  noopMemorySink,
+  type RegressionFailure,
+  type RegressionRunResult,
+  type SelfDiagnosis,
+  type DiagnoseOptions,
+  type MemorySink,
+} from "./state/self-diagnosis";

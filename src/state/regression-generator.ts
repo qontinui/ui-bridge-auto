@@ -29,6 +29,8 @@ import type {
   IRVersion,
 } from "@qontinui/shared-types/ui-bridge-ir";
 
+import { stableStringifyValue } from "./canonical-json";
+
 // ---------------------------------------------------------------------------
 // Public types — assertions
 // ---------------------------------------------------------------------------
@@ -544,29 +546,6 @@ export function generateRegressionSuite(
 // ---------------------------------------------------------------------------
 // Public API — serialization
 // ---------------------------------------------------------------------------
-
-/**
- * Recursively walk a JSON-serializable value and re-emit it with object keys
- * sorted alphabetically at every level. Arrays preserve order — array order
- * is meaningful in the suite (assertion ordering is part of the contract).
- *
- * `unknown` is the right type for the input: we only touch JSON-shape values
- * (string, number, boolean, null, array, plain object). Any other value
- * (function, symbol, undefined-as-property) violates the JSON contract and
- * is excluded by `JSON.stringify` anyway.
- */
-function stableStringifyValue(value: unknown): unknown {
-  if (value === null) return null;
-  if (Array.isArray(value)) return value.map(stableStringifyValue);
-  if (typeof value === "object") {
-    const obj = value as Record<string, unknown>;
-    const keys = Object.keys(obj).sort(byString);
-    const sorted: Record<string, unknown> = {};
-    for (const k of keys) sorted[k] = stableStringifyValue(obj[k]);
-    return sorted;
-  }
-  return value;
-}
 
 /**
  * Serialize a suite to deterministic JSON. Object keys are sorted at every
