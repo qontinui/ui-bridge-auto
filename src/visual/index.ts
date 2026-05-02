@@ -45,6 +45,46 @@ export {
 // Tauri/PostgreSQL baseline store
 export { TauriBaselineStore } from "./tauri-baseline-store";
 
+// Visibility scoring (Section 8)
+export {
+  computeVisibility,
+  overlayDetectorPredicate,
+  _resetVisibilityCache,
+  type Rect,
+  type VisibilityReport,
+  type VisibilityOccluder,
+  type ComputeVisibilityOptions,
+  type OverlayPredicate,
+} from "./visibility";
+
+// Text cross-check (Section 8)
+export {
+  crossCheckText,
+  type TextCrossCheckResult,
+  type TextCrossCheckOk,
+  type TextCrossCheckSkipped,
+  type TextCrossCheckCause,
+  type CrossCheckTextOptions,
+} from "./text-cross-check";
+
+// Design-token presence check (Section 8)
+export {
+  checkDesignTokens,
+  buildDesignTokenRegistry,
+  type DesignTokenRegistry,
+  type TokenViolation,
+  type CheckDesignTokensOptions,
+} from "./token-check";
+
+// Visual drift (Section 8)
+export {
+  runVisualDrift,
+  asDriftReport,
+  type VisualDriftReport,
+  type VisualDriftDetail,
+  type RunVisualDriftOptions,
+} from "./visual-drift";
+
 // Shared constants
 export { MEDIA_ELEMENT_TAGS } from "./types";
 
