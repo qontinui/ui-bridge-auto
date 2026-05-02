@@ -323,7 +323,7 @@ export class GraphExecutor {
     }
 
     const elements = this.registry.getAllElements();
-    const match = findFirst(elements, node.extract.target);
+    const { match } = findFirst(elements, node.extract.target);
     if (!match) {
       return Promise.resolve({
         nodeId: node.id,
@@ -368,7 +368,7 @@ export class GraphExecutor {
     }
 
     const elements = this.registry.getAllElements();
-    const match = findFirst(elements, node.assert.target);
+    const { match } = findFirst(elements, node.assert.target);
     if (!match) {
       return Promise.resolve({
         nodeId: node.id,

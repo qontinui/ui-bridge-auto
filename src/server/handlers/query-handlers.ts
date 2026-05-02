@@ -62,6 +62,8 @@ export function createQueryHandlers(engine: AutomationEngine, registry: Registry
           results.length === 0
             ? diagnoseNoResults(elements, body.query)
             : null;
+        // The handler contract reports just the count, so the
+        // ScoreBreakdown on each result is intentionally discarded here.
         return ok({ matchCount: results.length, diagnosis });
       } catch (err) {
         return fail(err);

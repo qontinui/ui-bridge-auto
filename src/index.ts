@@ -152,6 +152,9 @@ export {
 export {
   type ElementQuery,
   type QueryResult,
+  type RankedQueryResult,
+  type FindFirstOptions,
+  type FindFirstResult,
   type QueryableElement,
   matchesQuery,
   executeQuery,
@@ -536,6 +539,29 @@ export {
 // runner's `vite build` to pull `ts-morph` into the browser bundle (8000+
 // modules) and hang. See `qontinui-runner/vite.config.ts` for the source-
 // resolution alias that exposed the leak.
+
+// Drift — Section 7 Phase 1: drift-hypothesis engine.
+// We re-export `compareSpecToRuntime` and its sibling types directly from the
+// drift comparator module rather than via `./ir-builder`, because the IR
+// builder barrel pulls in `ts-morph` / `node:fs` / `node:path` and must not
+// reach browser bundles (see the comment block above). `ir-builder/drift.ts`
+// itself is pure types + a deterministic diff — safe to surface.
+export type { DriftEntry, DriftReport, RuntimeSnapshot } from "./ir-builder/drift";
+export { compareSpecToRuntime } from "./ir-builder/drift";
+
+// Drift — hypothesis engine + git-log helper.
+export type {
+  GitCommitRef,
+  DriftHypothesis,
+  DriftContext,
+  RunGit,
+} from "./drift";
+export {
+  fetchGitLog,
+  parseGitLog,
+  defaultRunGit,
+  buildDriftHypotheses,
+} from "./drift";
 
 // Visual — highlights, OCR assertions, coordinate translation, screenshot comparison
 export {

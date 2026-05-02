@@ -206,8 +206,8 @@ async function attemptTextAssertion(
 ): Promise<TextAssertionResult> {
   // Find element
   const elements: QueryableElement[] = registry.getAllElements();
-  const result = findFirst(elements, query);
-  if (!result) {
+  const { match } = findFirst(elements, query);
+  if (!match) {
     return {
       pass: false,
       actualText: "",
@@ -219,7 +219,7 @@ async function attemptTextAssertion(
   }
 
   // Get the HTMLElement from the registry
-  const registryElement = elements.find((el) => el.id === result.id);
+  const registryElement = elements.find((el) => el.id === match.id);
   if (!registryElement) {
     return {
       pass: false,
