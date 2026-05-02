@@ -263,13 +263,18 @@ export function compareFingerprints(
       ir: ir.groupCount,
     });
   }
-  // Compare group ids in order. Tolerate the placeholder behaviour in
-  // `projectIRToBundledPage`: real legacy specs that round-tripped via the
-  // codemod must agree exactly, so a simple ordered string-array equality is
-  // the right contract.
+  // Compare group ids as a set, not in order. The codemod (`migrate-cli.ts`)
+  // preserves the legacy spec's group order in the IR, while the build-time
+  // emitter (`ir-emitter.ts`) sorts states by id for deterministic output —
+  // both are valid IR shapes, but their forward projections produce groups
+  // in different orders. The semantic contract is "same set of groups +
+  // same total assertions"; group order is incidental authoring metadata
+  // and not load-bearing for any consumer.
+  const legacySorted = [...legacy.groupIds].sort();
+  const irSorted = [...ir.groupIds].sort();
   const sameIds =
-    legacy.groupIds.length === ir.groupIds.length &&
-    legacy.groupIds.every((id, i) => id === ir.groupIds[i]);
+    legacySorted.length === irSorted.length &&
+    legacySorted.every((id, i) => id === irSorted[i]);
   if (!sameIds) {
     mismatches.push({
       field: "groupIds",
