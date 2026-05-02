@@ -37,15 +37,15 @@ export class StateRecovery {
     const activeStates = new Set<string>();
 
     for (const stateDef of this.stateMachine.getAllStateDefinitions()) {
-      const allRequired = stateDef.requiredElements.every((query) =>
-        findFirst(elements, query) !== null,
+      const allRequired = stateDef.requiredElements.every(
+        (query) => findFirst(elements, query).match !== null,
       );
 
       if (!allRequired) continue;
 
       // Check excluded elements
-      const anyExcluded = stateDef.excludedElements?.some((query) =>
-        findFirst(elements, query) !== null,
+      const anyExcluded = stateDef.excludedElements?.some(
+        (query) => findFirst(elements, query).match !== null,
       );
 
       if (anyExcluded) continue;

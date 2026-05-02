@@ -78,15 +78,18 @@ describe("compileQuery", () => {
     const link = createLink("Home", "/");
     const btn = createButton("Submit");
 
-    const result = compiled.first([link, btn]);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe(btn.id);
+    const { match } = compiled.first([link, btn]);
+    expect(match).not.toBeNull();
+    expect(match!.id).toBe(btn.id);
   });
 
-  it("first() returns null when no match", () => {
+  it("first() returns null match when no candidate matches", () => {
     const compiled = compileQuery({ tagName: "select" });
     const btn = createButton("Submit");
-    expect(compiled.first([btn])).toBeNull();
+    const result = compiled.first([btn]);
+    expect(result.match).toBeNull();
+    expect(result.score).toBeNull();
+    expect(result.ambiguities).toEqual([]);
   });
 
   it("preserves the original query on the compiled object", () => {

@@ -154,11 +154,11 @@ export class StateDetector {
     cond: StateCondition,
     elements: QueryableElement[],
   ): boolean {
-    const result = findFirst(elements, cond.element);
-    if (!result) return false;
+    const { match } = findFirst(elements, cond.element);
+    if (!match) return false;
 
     // Find the actual QueryableElement to inspect its state
-    const el = elements.find((e) => e.id === result.id);
+    const el = elements.find((e) => e.id === match.id);
     if (!el) return false;
 
     const state = el.getState();

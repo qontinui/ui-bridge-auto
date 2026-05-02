@@ -129,18 +129,18 @@ export async function extractToVariable(
   variables: Record<string, unknown>,
 ): Promise<void> {
   const elements = registry.getAllElements();
-  const result = findFirst(elements, query);
+  const { match } = findFirst(elements, query);
 
-  if (!result) {
+  if (!match) {
     throw new Error(
       `extractToVariable: no element found matching query: ${JSON.stringify(query)}`,
     );
   }
 
-  const element = elements.find((el) => el.id === result.id);
+  const element = elements.find((el) => el.id === match.id);
   if (!element) {
     throw new Error(
-      `extractToVariable: matched id "${result.id}" not present in registry (race condition?)`,
+      `extractToVariable: matched id "${match.id}" not present in registry (race condition?)`,
     );
   }
 

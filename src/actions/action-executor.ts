@@ -236,14 +236,18 @@ export class ActionExecutor {
       const elements = this.config.registry.getAllElements();
 
       // Try exact query first.
-      let result = findFirst(elements, query);
-      if (result) return result;
+      const exact = findFirst(elements, query);
+      if (exact.match) return exact.match;
 
       // Fallback: if query has `text`, also try matching by ariaLabel
       // (many form elements have labels but no textContent).
       if (query.text && !query.ariaLabel) {
-        result = findFirst(elements, { ...query, text: undefined, ariaLabel: query.text });
-        if (result) return result;
+        const aria = findFirst(elements, {
+          ...query,
+          text: undefined,
+          ariaLabel: query.text,
+        });
+        if (aria.match) return aria.match;
       }
 
       if (attempt < maxAttempts - 1) {
@@ -312,11 +316,11 @@ export class ActionExecutor {
       const elements = this.config.registry.getAllElements();
 
       if (spec.type === 'elementAppears' && spec.query) {
-        const found = findFirst(elements, spec.query);
-        if (found) return;
+        const { match } = findFirst(elements, spec.query);
+        if (match) return;
       } else if (spec.type === 'elementVanishes' && spec.query) {
-        const found = findFirst(elements, spec.query);
-        if (!found) return;
+        const { match } = findFirst(elements, spec.query);
+        if (!match) return;
       } else if (spec.type === 'stateChange') {
         // State change verification is handled by callers with state machine access.
         // The executor doesn't have state machine context, so treat as immediately satisfied.
