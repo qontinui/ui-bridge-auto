@@ -594,3 +594,32 @@ export {
   type ScreenshotAssertionOptions,
   type ScreenshotAssertionResult,
 } from "./visual";
+
+// Visual + semantic fusion — Section 8.
+export {
+  computeVisibility,
+  overlayDetectorPredicate,
+  type VisibilityReport,
+  type VisibilityOccluder,
+  type ComputeVisibilityOptions,
+  type OverlayPredicate,
+  crossCheckText,
+  type TextCrossCheckResult,
+  type TextCrossCheckOk,
+  type TextCrossCheckSkipped,
+  type TextCrossCheckCause,
+  type CrossCheckTextOptions,
+  checkDesignTokens,
+  buildDesignTokenRegistry,
+  type DesignTokenRegistry,
+  type TokenViolation,
+  type CheckDesignTokensOptions,
+  runVisualDrift,
+  asDriftReport as visualDriftReportToDriftReport,
+  type VisualDriftReport,
+  type VisualDriftDetail,
+  type RunVisualDriftOptions,
+} from "./visual";
+
+// Section 8: re-export the helper from the discovery module's public surface.
+export { isOverlayCandidate } from "./discovery/overlay-detector";

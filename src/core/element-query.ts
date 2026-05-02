@@ -43,6 +43,19 @@ export interface ElementQuery {
   // Spatial (viewport coordinates)
   within?: { x: number; y: number; width: number; height: number };
 
+  /**
+   * Visibility-aware scoring (Section 8). When set, ranking penalises
+   * candidates whose `visibilityRatio` (computed externally and threaded
+   * through `el.getState().computedStyles?.["visibility-ratio"]` or via the
+   * `state.value` carrier) falls short of `minRatio`. The boolean form
+   * `true` is shorthand for `{ minRatio: 1.0 }`.
+   *
+   * NOTE: this is a SCORING criterion only. Use `visible` (boolean) to
+   * FILTER. Visibility scoring keeps invisible elements in the result set
+   * so consumers can surface them as ambiguities.
+   */
+  visibilityRatio?: boolean | { minRatio: number };
+
   // Structural (DOM tree — queries resolved recursively)
   parent?: ElementQuery;
   ancestor?: ElementQuery;
@@ -152,6 +165,14 @@ export interface QueryableElementState {
   value?: string | number | boolean;
   rect?: { x: number; y: number; width: number; height: number };
   computedStyles?: Record<string, string>;
+  /**
+   * Pre-computed visibility ratio in [0, 1] (Section 8). 1.0 = fully visible
+   * inside the viewport with no occluders; 0 = fully off-screen or covered.
+   * Populated by registry adapters that have already run
+   * `computeVisibility`; absent on adapters that have not — `visibilityRatio`
+   * scoring treats `undefined` as "no signal" (zero contribution).
+   */
+  visibilityRatio?: number;
 }
 
 // ---------------------------------------------------------------------------

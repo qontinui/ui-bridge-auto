@@ -58,6 +58,19 @@ function isOverlayElement(el: HTMLElement): boolean {
   return false;
 }
 
+/**
+ * Pure heuristic predicate exposing the same overlay classification used
+ * by `OverlayDetector` internally. Useful when callers (e.g. visibility
+ * scoring in Section 8) need to ask "is this element overlay-shaped?"
+ * without subscribing to the full detector lifecycle.
+ *
+ * Returns `true` if the element looks like an overlay (portal data
+ * attribute, fixed/absolute positioning, or positive z-index).
+ */
+export function isOverlayCandidate(el: HTMLElement): boolean {
+  return isOverlayElement(el);
+}
+
 function collectInteractiveElements(root: HTMLElement): HTMLElement[] {
   const elements: HTMLElement[] = [];
 
@@ -161,6 +174,26 @@ export class OverlayDetector {
   dispose(): void {
     this.stop();
     this.trackedOverlays.clear();
+  }
+
+  /**
+   * Return `true` when `el` (or any of its ancestors up to `document.body`)
+   * is currently in the tracked-overlay set — i.e., the detector has
+   * reported it via `onOverlayDetected` and has not yet seen it removed.
+   *
+   * Used by Section 8's visibility scoring to distinguish "covered by an
+   * overlay we know about" (expected behavior — modal, dropdown, etc.) from
+   * "covered by some other element" (potential layout bug). Call sites must
+   * have a started detector; on a stopped detector the set is always empty.
+   */
+  isKnownOverlay(el: HTMLElement): boolean {
+    if (this.trackedOverlays.has(el)) return true;
+    let current: HTMLElement | null = el.parentElement;
+    while (current) {
+      if (this.trackedOverlays.has(current)) return true;
+      current = current.parentElement;
+    }
+    return false;
   }
 
   // -----------------------------------------------------------------------

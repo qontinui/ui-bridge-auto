@@ -50,6 +50,14 @@ export interface ScoreBreakdown {
   spatialMatch: number;
   /** Parent/ancestor matched. */
   structuralMatch: number;
+  /**
+   * Visibility-aware match (Section 8). Scored only when the query sets
+   * `visibilityRatio`. Contributes up to `0.2` when the candidate's
+   * `state.visibilityRatio` meets or exceeds the threshold; partial credit
+   * scales linearly down to 0 at ratio 0. Defaults to 0 — invisible
+   * elements remain in the result set as low-confidence candidates.
+   */
+  visibilityMatch: number;
 }
 
 /** A query result augmented with a composite score and breakdown. */
@@ -106,6 +114,7 @@ export function computeScoreBreakdown(
     semanticMatch: 0,
     spatialMatch: 0,
     structuralMatch: 0,
+    visibilityMatch: 0,
   };
 
   let rawScore = 0;
@@ -301,6 +310,36 @@ export function computeScoreBreakdown(
     ) {
       scores.spatialMatch = 0.2;
       rawScore += 0.2;
+    }
+  }
+
+  // --- Visibility (Section 8) ---
+  // Scored only when the query opts in. Invisible elements remain in the
+  // result set with a lower score so consumers can surface them as
+  // ambiguities rather than silently dropping them.
+  if (query.visibilityRatio !== undefined) {
+    const minRatio =
+      query.visibilityRatio === true
+        ? 1.0
+        : query.visibilityRatio === false
+          ? 0
+          : query.visibilityRatio.minRatio;
+    const VIS_WEIGHT = 0.2;
+    maxPossible += VIS_WEIGHT;
+    const ratio = state.visibilityRatio;
+    // `undefined` ratio: producer didn't compute visibility. Treat as a
+    // zero contribution — neither penalised nor rewarded — so consumers
+    // upgrading a registry incrementally don't get spurious score drops.
+    if (ratio !== undefined) {
+      if (ratio >= minRatio) {
+        // Full credit at-or-above threshold; partial credit below.
+        scores.visibilityMatch = VIS_WEIGHT;
+      } else if (minRatio > 0) {
+        scores.visibilityMatch = (ratio / minRatio) * VIS_WEIGHT;
+      } else {
+        scores.visibilityMatch = VIS_WEIGHT;
+      }
+      rawScore += scores.visibilityMatch;
     }
   }
 
