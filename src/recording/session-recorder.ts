@@ -1,9 +1,11 @@
 /**
  * Session recording for capturing UI interactions.
  *
- * Records actions, state changes, element appearances/disappearances, and
- * element snapshots into a structured timeline. Sessions can be serialized
- * to JSON for persistence and later replay.
+ * Records actions, state changes, element appearances/disappearances,
+ * predicate evaluations, and element snapshots into a structured timeline.
+ * Each event optionally carries a `causedBy` link to the event that
+ * triggered it, forming a causal chain that can be deterministically
+ * replayed.
  */
 
 import type { ElementFingerprint } from "../discovery/element-fingerprint";
@@ -12,21 +14,32 @@ import type { ElementFingerprint } from "../discovery/element-fingerprint";
 // Types
 // ---------------------------------------------------------------------------
 
+/** Identifier for a recorded event. Stable within a session; do not parse. */
+export type RecordedEventId = string;
+
 /** A single recorded event in a session timeline. */
 export interface RecordedEvent {
-  id: string;
+  id: RecordedEventId;
   timestamp: number;
   type:
     | "action"
     | "stateChange"
     | "elementAppeared"
     | "elementDisappeared"
-    | "snapshot";
+    | "snapshot"
+    | "predicateEval";
+  /**
+   * The event that caused this event, or null for root events (user input,
+   * scripted invocations). Optional for back-compat — old fixtures without
+   * causality continue to deserialize.
+   */
+  causedBy?: RecordedEventId | null;
   data:
     | RecordedAction
     | RecordedStateChange
     | RecordedElementEvent
-    | RecordedSnapshot;
+    | RecordedSnapshot
+    | RecordedPredicateEval;
 }
 
 /** An action that was performed on an element. */
@@ -58,6 +71,31 @@ export interface RecordedElementEvent {
 export interface RecordedSnapshot {
   elementIds: string[];
   elementCount: number;
+  /** Optional richer capture for replay starting-state snapshots. */
+  elementFingerprints?: ElementFingerprint[];
+  /** Active state-machine states at snapshot time. */
+  activeStateIds?: string[];
+  /** Free-form annotations attached by the capture site. */
+  annotations?: Record<string, unknown>;
+}
+
+/**
+ * A predicate evaluation event — captures the outcome of a state-machine
+ * predicate or required-elements check so replay can verify the same input
+ * produces the same outcome.
+ */
+export interface RecordedPredicateEval {
+  /** Identifier of the predicate (e.g. an IR `requiredElements` criterion id). */
+  predicateId: string;
+  /** Optional human-readable target description. */
+  target?: string;
+  /** Whether the predicate matched. */
+  matched: boolean;
+  /**
+   * Reference to the snapshot the predicate was evaluated against. Lets
+   * replay reproduce the exact input.
+   */
+  snapshotRef?: RecordedEventId;
 }
 
 /** A complete recording session. */
@@ -80,7 +118,7 @@ function nextSessionId(): string {
   return `session-${++sessionCounter}-${Date.now()}`;
 }
 
-function nextEventId(): string {
+function nextEventId(): RecordedEventId {
   return `evt-${++eventCounter}`;
 }
 
@@ -94,9 +132,15 @@ function nextEventId(): string {
  * Call `start()` to begin a new session, record events with the `record*`
  * methods, and `stop()` to finalize. The session can then be exported to
  * JSON for persistence or passed to the ReplayEngine.
+ *
+ * Causality: each `record*` method returns the id of the event it just
+ * recorded. Use `withCause(id, fn)` (or `withCauseAsync`) to mark every
+ * event recorded inside `fn` as caused by `id`. An explicit `causedBy`
+ * argument on the `record*` method overrides the ambient cause.
  */
 export class SessionRecorder {
   private session: RecordingSession | null = null;
+  private currentCauseId: RecordedEventId | null = null;
 
   /** Start a new recording session. Returns the session ID. */
   start(metadata?: Record<string, unknown>): string {
@@ -110,6 +154,7 @@ export class SessionRecorder {
       events: [],
       metadata,
     };
+    this.currentCauseId = null;
     return id;
   }
 
@@ -121,32 +166,94 @@ export class SessionRecorder {
     this.session.endedAt = Date.now();
     const result = this.session;
     this.session = null;
+    this.currentCauseId = null;
     return result;
   }
 
-  /** Record an action event. */
-  recordAction(action: RecordedAction): void {
-    this.addEvent("action", action);
+  /**
+   * Record an action event. Actions are root causes by default
+   * (causedBy = null) unless an ambient cause is set or one is supplied.
+   */
+  recordAction(
+    action: RecordedAction,
+    causedBy?: RecordedEventId | null,
+  ): RecordedEventId {
+    return this.addEvent("action", action, causedBy);
   }
 
   /** Record a state change event. */
-  recordStateChange(change: RecordedStateChange): void {
-    this.addEvent("stateChange", change);
+  recordStateChange(
+    change: RecordedStateChange,
+    causedBy?: RecordedEventId | null,
+  ): RecordedEventId {
+    return this.addEvent("stateChange", change, causedBy);
   }
 
   /** Record an element appearing. */
-  recordElementAppeared(event: RecordedElementEvent): void {
-    this.addEvent("elementAppeared", event);
+  recordElementAppeared(
+    event: RecordedElementEvent,
+    causedBy?: RecordedEventId | null,
+  ): RecordedEventId {
+    return this.addEvent("elementAppeared", event, causedBy);
   }
 
   /** Record an element disappearing. */
-  recordElementDisappeared(event: RecordedElementEvent): void {
-    this.addEvent("elementDisappeared", event);
+  recordElementDisappeared(
+    event: RecordedElementEvent,
+    causedBy?: RecordedEventId | null,
+  ): RecordedEventId {
+    return this.addEvent("elementDisappeared", event, causedBy);
   }
 
   /** Record a snapshot of current elements. */
-  recordSnapshot(snapshot: RecordedSnapshot): void {
-    this.addEvent("snapshot", snapshot);
+  recordSnapshot(
+    snapshot: RecordedSnapshot,
+    causedBy?: RecordedEventId | null,
+  ): RecordedEventId {
+    return this.addEvent("snapshot", snapshot, causedBy);
+  }
+
+  /** Record a predicate-evaluation event. */
+  recordPredicateEval(
+    evaluation: RecordedPredicateEval,
+    causedBy?: RecordedEventId | null,
+  ): RecordedEventId {
+    return this.addEvent("predicateEval", evaluation, causedBy);
+  }
+
+  /**
+   * Run `fn` with `eventId` as the ambient cause. Any events recorded
+   * during `fn` (and its synchronous sub-calls) get `causedBy = eventId`
+   * unless they pass an explicit override. The previous ambient cause is
+   * restored on exit, including when `fn` throws.
+   */
+  withCause<T>(eventId: RecordedEventId | null, fn: () => T): T {
+    const prev = this.currentCauseId;
+    this.currentCauseId = eventId;
+    try {
+      return fn();
+    } finally {
+      this.currentCauseId = prev;
+    }
+  }
+
+  /** Async variant of `withCause`. Restores ambient cause even on rejection. */
+  async withCauseAsync<T>(
+    eventId: RecordedEventId | null,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const prev = this.currentCauseId;
+    this.currentCauseId = eventId;
+    try {
+      return await fn();
+    } finally {
+      this.currentCauseId = prev;
+    }
+  }
+
+  /** The ambient cause id, or null if none is set. */
+  get ambientCause(): RecordedEventId | null {
+    return this.currentCauseId;
   }
 
   /** Get the current session, or null if not recording. */
@@ -180,15 +287,21 @@ export class SessionRecorder {
   private addEvent(
     type: RecordedEvent["type"],
     data: RecordedEvent["data"],
-  ): void {
+    causedByOverride?: RecordedEventId | null,
+  ): RecordedEventId {
     if (!this.session) {
       throw new Error("No recording session in progress");
     }
+    const id = nextEventId();
+    const causedBy =
+      causedByOverride !== undefined ? causedByOverride : this.currentCauseId;
     this.session.events.push({
-      id: nextEventId(),
+      id,
       timestamp: Date.now(),
       type,
+      causedBy,
       data,
     });
+    return id;
   }
 }
