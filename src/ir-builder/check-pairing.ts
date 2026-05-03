@@ -39,6 +39,43 @@ import {
 import { findLegacySpecs, routeSpecPath, type SpecRouting } from "./migrate-cli";
 
 // ---------------------------------------------------------------------------
+// IRPairingPolicy types — locally declared until shared-types ^0.2.2 is
+// the resolved consumer version. The shape mirrors `IRPairingPolicy` exported
+// by `@qontinui/shared-types/ui-bridge-ir` once 0.2.2 ships; consumers
+// reading the on-disk IR via this gate get type-safe access either way.
+// ---------------------------------------------------------------------------
+
+/**
+ * Fingerprint axes that the pairing gate compares between the legacy spec
+ * and the IR's forward projection. A document's
+ * `pairingPolicy.acceptDrift.axes` lists which of these are intentionally
+ * tolerated.
+ */
+export type IRPairingAxis = "groupCount" | "groupIds" | "assertionCount";
+
+/**
+ * Per-document opt-out from specific spec<->IR pairing mismatches.
+ * Required fields are `axes` + `reason` + `since`. `expiresAt` is
+ * optional and forces periodic re-justification when set.
+ */
+export interface IRAcceptDriftPolicy {
+  axes: IRPairingAxis[];
+  reason: string;
+  /** ISO date YYYY-MM-DD. */
+  since: string;
+  /** ISO date YYYY-MM-DD. */
+  expiresAt?: string;
+}
+
+/** Per-document policy block. Currently only carries `acceptDrift`. */
+export interface IRPairingPolicy {
+  acceptDrift?: IRAcceptDriftPolicy;
+}
+
+/** IR document possibly carrying a `pairingPolicy` block. */
+type IRDocumentWithPolicy = IRDocument & { pairingPolicy?: IRPairingPolicy };
+
+// ---------------------------------------------------------------------------
 // Single-repo routing helper
 // ---------------------------------------------------------------------------
 
@@ -296,7 +333,13 @@ export function compareFingerprints(
 // Per-spec pairing check
 // ---------------------------------------------------------------------------
 
-export type PairingStatus = "paired" | "missing" | "mismatched" | "error" | "unrouted";
+export type PairingStatus =
+  | "paired"
+  | "accepted-drift"
+  | "missing"
+  | "mismatched"
+  | "error"
+  | "unrouted";
 
 export interface PairingResult {
   legacyPath: string;
@@ -305,6 +348,54 @@ export interface PairingResult {
   irPath?: string;
   mismatches?: FingerprintMismatch[];
   error?: string;
+  /**
+   * Axes whose mismatches were tolerated under the IR's
+   * `pairingPolicy.acceptDrift`. Set when status is `accepted-drift`,
+   * or when a partial filter still left unaccepted axes that flip the
+   * status to `mismatched`.
+   */
+  acceptedAxes?: IRPairingAxis[];
+  /** Justification text from `pairingPolicy.acceptDrift.reason`. */
+  policyReason?: string;
+  /**
+   * True iff the IR's `pairingPolicy.acceptDrift.expiresAt` has passed.
+   * Expired policies are NOT applied — the document falls through as an
+   * ordinary mismatch with this flag set so reporting can call it out.
+   */
+  policyExpired?: boolean;
+}
+
+/**
+ * Compare an `expiresAt` ISO date (YYYY-MM-DD) against a reference instant.
+ * Returns `true` iff the policy has expired (i.e. `expiresAt` is strictly
+ * before `now`'s UTC date). String comparison is correct for ISO dates and
+ * sidesteps timezone surprises.
+ */
+export function isPolicyExpired(
+  policy: IRAcceptDriftPolicy,
+  now: Date = new Date(),
+): boolean {
+  if (policy.expiresAt === undefined) return false;
+  const today = now.toISOString().slice(0, 10);
+  return policy.expiresAt < today;
+}
+
+/**
+ * Partition mismatches into ones tolerated by the policy's `axes` and
+ * ones that still fail the gate. Order is preserved within each bucket.
+ */
+export function applyAcceptDrift(
+  mismatches: FingerprintMismatch[],
+  axes: IRPairingAxis[],
+): { kept: FingerprintMismatch[]; accepted: FingerprintMismatch[] } {
+  const skipSet: ReadonlySet<string> = new Set(axes);
+  const kept: FingerprintMismatch[] = [];
+  const accepted: FingerprintMismatch[] = [];
+  for (const m of mismatches) {
+    if (skipSet.has(m.field)) accepted.push(m);
+    else kept.push(m);
+  }
+  return { kept, accepted };
 }
 
 /** Strip an optional UTF-8 BOM. At least one shipping spec uses one. */
@@ -390,15 +481,45 @@ export function checkOne(
   // shape the codemod would have produced).
   const mismatchesAgainstLegacy = compareFingerprints(legacyFp, irFp);
   const mismatchesAgainstRoundTrip = compareFingerprints(legacyRoundTripFp, irFp);
-  const mismatches: FingerprintMismatch[] = [
-    ...mismatchesAgainstLegacy,
-    ...mismatchesAgainstRoundTrip,
-  ];
-  if (mismatches.length > 0) {
-    result.status = "mismatched";
-    result.mismatches = mismatchesAgainstLegacy.length > 0
+  const primaryMismatches =
+    mismatchesAgainstLegacy.length > 0
       ? mismatchesAgainstLegacy
       : mismatchesAgainstRoundTrip;
+
+  // ---- Apply `pairingPolicy.acceptDrift` if the IR declares one. ----
+  //
+  // The policy lets hand-authored IRs (e.g. the runner's `active.spec`,
+  // which uses a 4-state canonical model rather than the legacy 9-group
+  // convention) opt out of specific fingerprint axes. Mismatches NOT in
+  // the listed axes still fail the gate. Expired policies are surfaced
+  // as ordinary mismatches with `policyExpired: true` so reviewers know
+  // the exemption needs renewal.
+  const policy = (ir as IRDocumentWithPolicy).pairingPolicy?.acceptDrift;
+  let workingMismatches = primaryMismatches;
+  if (policy !== undefined && policy.axes.length > 0) {
+    if (isPolicyExpired(policy)) {
+      // Expired — don't filter. Tag the result so reporting can call it out.
+      result.policyExpired = true;
+      result.policyReason = policy.reason;
+    } else {
+      const { kept, accepted } = applyAcceptDrift(primaryMismatches, policy.axes);
+      workingMismatches = kept;
+      if (accepted.length > 0) {
+        const acceptedFields = new Set<IRPairingAxis>();
+        for (const a of accepted) acceptedFields.add(a.field as IRPairingAxis);
+        result.acceptedAxes = [...acceptedFields];
+        result.policyReason = policy.reason;
+      }
+    }
+  }
+
+  if (workingMismatches.length > 0) {
+    result.status = "mismatched";
+    result.mismatches = workingMismatches;
+  } else if (result.acceptedAxes !== undefined && result.acceptedAxes.length > 0) {
+    // All mismatches were policy-tolerated. Document still drifts, but the
+    // drift is documented and accepted.
+    result.status = "accepted-drift";
   }
   return result;
 }
@@ -409,20 +530,29 @@ export function checkOne(
 
 export interface CheckSummary {
   paired: number;
+  acceptedDrift: number;
   missing: number;
   mismatched: number;
   errors: number;
   unrouted: number;
+  /**
+   * Count of results whose policy was expired and therefore NOT applied.
+   * These also surface as `mismatched` (not double-counted), but the
+   * separate counter lets CI logs flag them distinctly.
+   */
+  expiredPolicies: number;
   results: PairingResult[];
 }
 
 export function summarise(results: PairingResult[]): CheckSummary {
   const summary: CheckSummary = {
     paired: 0,
+    acceptedDrift: 0,
     missing: 0,
     mismatched: 0,
     errors: 0,
     unrouted: 0,
+    expiredPolicies: 0,
     results,
   };
   for (const r of results) {
@@ -430,11 +560,15 @@ export function summarise(results: PairingResult[]): CheckSummary {
       case "paired":
         summary.paired++;
         break;
+      case "accepted-drift":
+        summary.acceptedDrift++;
+        break;
       case "missing":
         summary.missing++;
         break;
       case "mismatched":
         summary.mismatched++;
+        if (r.policyExpired === true) summary.expiredPolicies++;
         break;
       case "error":
         summary.errors++;
@@ -468,17 +602,29 @@ function reportResult(
     case "paired":
       io.stdout(`[check-pairing] OK    ${rel}\n`);
       break;
+    case "accepted-drift":
+      io.stdout(
+        `[check-pairing] DRIFT ${rel} (page-id ${result.pageId ?? "?"}): ` +
+          `axes=[${(result.acceptedAxes ?? []).join(", ")}] ` +
+          `reason="${result.policyReason ?? "(no reason)"}"\n`,
+      );
+      break;
     case "missing":
       io.stderr(
         `[check-pairing] MISSING ${rel} -> expected IR at ${result.irPath ?? "(unknown)"}\n`,
       );
       break;
-    case "mismatched":
+    case "mismatched": {
+      const expiredNote =
+        result.policyExpired === true
+          ? ` [policy EXPIRED — re-justify or remove acceptDrift]`
+          : "";
       io.stderr(
-        `[check-pairing] MISMATCH ${rel} (page-id ${result.pageId ?? "?"}): ` +
-          `${formatMismatches(result.mismatches ?? [])}\n`,
+        `[check-pairing] MISMATCH ${rel} (page-id ${result.pageId ?? "?"}):` +
+          `${expiredNote} ${formatMismatches(result.mismatches ?? [])}\n`,
       );
       break;
+    }
     case "error":
       io.stderr(`[check-pairing] ERROR ${rel}: ${result.error ?? "(no message)"}\n`);
       break;
@@ -510,8 +656,14 @@ export function runCheckPairing(args: CheckPairingArgs, io: CliIO): CheckSummary
   const summary = summarise(results);
   io.stdout(
     `[check-pairing] paired: ${summary.paired}, ` +
+      (summary.acceptedDrift > 0
+        ? `accepted-drift: ${summary.acceptedDrift}, `
+        : "") +
       `missing: ${summary.missing}, ` +
       `mismatched: ${summary.mismatched}` +
+      (summary.expiredPolicies > 0
+        ? `, expired-policies: ${summary.expiredPolicies}`
+        : "") +
       (summary.errors > 0 ? `, errors: ${summary.errors}` : "") +
       (summary.unrouted > 0 ? `, unrouted: ${summary.unrouted}` : "") +
       `\n`,
