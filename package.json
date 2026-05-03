@@ -7,14 +7,84 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./types": {
+      "import": {
+        "types": "./dist/types/index.d.mts",
+        "default": "./dist/types/index.mjs"
+      },
+      "require": {
+        "types": "./dist/types/index.d.ts",
+        "default": "./dist/types/index.js"
+      }
+    },
+    "./drift": {
+      "import": {
+        "types": "./dist/drift/index.d.mts",
+        "default": "./dist/drift/index.mjs"
+      },
+      "require": {
+        "types": "./dist/drift/index.d.ts",
+        "default": "./dist/drift/index.js"
+      }
+    },
+    "./regression": {
+      "import": {
+        "types": "./dist/regression/index.d.mts",
+        "default": "./dist/regression/index.mjs"
+      },
+      "require": {
+        "types": "./dist/regression/index.d.ts",
+        "default": "./dist/regression/index.js"
+      }
+    },
+    "./diagnosis": {
+      "import": {
+        "types": "./dist/diagnosis/index.d.mts",
+        "default": "./dist/diagnosis/index.mjs"
+      },
+      "require": {
+        "types": "./dist/diagnosis/index.d.ts",
+        "default": "./dist/diagnosis/index.js"
+      }
+    },
+    "./visual": {
+      "import": {
+        "types": "./dist/visual/index.d.mts",
+        "default": "./dist/visual/index.mjs"
+      },
+      "require": {
+        "types": "./dist/visual/index.d.ts",
+        "default": "./dist/visual/index.js"
+      }
+    },
+    "./runtime": {
+      "import": {
+        "types": "./dist/runtime/index.d.mts",
+        "default": "./dist/runtime/index.mjs"
+      },
+      "require": {
+        "types": "./dist/runtime/index.d.ts",
+        "default": "./dist/runtime/index.js"
+      }
     },
     "./ir-builder": {
-      "import": "./dist/ir-builder/index.mjs",
-      "require": "./dist/ir-builder/index.js",
-      "types": "./dist/ir-builder/index.d.ts"
+      "import": {
+        "types": "./dist/ir-builder/index.d.mts",
+        "default": "./dist/ir-builder/index.mjs"
+      },
+      "require": {
+        "types": "./dist/ir-builder/index.d.ts",
+        "default": "./dist/ir-builder/index.js"
+      }
     }
   },
   "bin": {

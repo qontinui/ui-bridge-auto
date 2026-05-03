@@ -1,10 +1,35 @@
 /**
  * @qontinui/ui-bridge-auto — DOM-based automation library.
  *
- * Public API re-exports for all subsystems.
+ * Root entry point. This barrel re-exports from each public subpath barrel so
+ * legacy consumers that import from `@qontinui/ui-bridge-auto` keep working.
+ * NEW consumers should import from a subpath instead — pulling the root entry
+ * forces the bundler to include the entire DOM execution engine even for
+ * consumers that only need types or drift comparison.
+ *
+ * Public subpaths:
+ *   - `@qontinui/ui-bridge-auto/types`       — zero-dep core types (browser-safe)
+ *   - `@qontinui/ui-bridge-auto/drift`       — drift comparator + hypothesis engine
+ *   - `@qontinui/ui-bridge-auto/regression`  — Section 9 regression suite generator
+ *   - `@qontinui/ui-bridge-auto/diagnosis`   — Section 10 self-diagnosis composer
+ *   - `@qontinui/ui-bridge-auto/visual`      — visual / OCR / screenshot assertions
+ *   - `@qontinui/ui-bridge-auto/runtime`     — DOM execution engine (heaviest path)
+ *
+ * Items that don't have a dedicated subpath (server, recording, healing,
+ * resolution, counterfactual, config) are still exported here.
  */
 
-// Types — element model
+// =============================================================================
+// Subpath re-exports — legacy root surface
+// =============================================================================
+
+// Core types
+// NOTE: `types/transition.ts` exports a `TransitionAction` interface (the
+// type-level action descriptor) and `state/state-machine.ts` also exports a
+// `TransitionAction` (the runtime call signature). The legacy root entry
+// aliased the former as `TransitionActionDef`, so we mirror that alias here
+// and re-export everything else from the types barrel verbatim. The runtime
+// `TransitionAction` is exported below via `export * from "./runtime"`.
 export type {
   AutomationElement,
   ElementState,
@@ -12,18 +37,6 @@ export type {
   ComputedStyleSubset,
   ElementSnapshot,
   ElementType,
-} from "./types/element";
-export {
-  ELEMENT_TYPES,
-  isElementType,
-  isAutomationElement,
-  isElementState,
-  isElementRect,
-  isElementSnapshot,
-} from "./types/element";
-
-// Types — state machine
-export type {
   State,
   StateCondition,
   StateConditionProperty,
@@ -31,38 +44,41 @@ export type {
   ActiveStateSet,
   StateLifecycle,
   StateChangeEvent,
-} from "./types/state";
-export {
-  createEmptyStateSet,
-  diffStateSets,
-  getStateLifecycle,
-  evaluateCondition,
-} from "./types/state";
-
-// Types — transitions
-export type {
   Transition,
   TransitionAction as TransitionActionDef,
   ActionType,
   WaitSpec as TransitionWaitSpec,
   WaitType,
   TransitionResult,
-} from "./types/transition";
-export {
-  transitionSuccessRate,
-  recordTransitionExecution,
-} from "./types/transition";
-
-// Types — action records
-export type {
   ActionRecord,
   ActionStatus,
   ActionExecutionOptions,
   PressTiming,
   RepetitionOptions,
   VerificationSpec,
-} from "./types/action";
+  ElementCriteria,
+  MatchResult,
+  MultiMatchResult,
+  QueryExplanation,
+  CriteriaResult,
+  ViewportRegion,
+  NormalizedRegion,
+  SpatialRelation,
+  SpatialQuery,
+} from "./types";
 export {
+  ELEMENT_TYPES,
+  isElementType,
+  isAutomationElement,
+  isElementState,
+  isElementRect,
+  isElementSnapshot,
+  createEmptyStateSet,
+  diffStateSets,
+  getStateLifecycle,
+  evaluateCondition,
+  transitionSuccessRate,
+  recordTransitionExecution,
   createActionRecord,
   markExecuting,
   markCompleted,
@@ -71,36 +87,45 @@ export {
   markSkipped,
   isTerminalStatus,
   createDefaultExecutionOptions,
-} from "./types/action";
-
-// Types — match results
-export type {
-  ElementCriteria,
-  MatchResult,
-  MultiMatchResult,
-  QueryExplanation,
-  CriteriaResult,
-} from "./types/match";
-export {
   noMatch,
   matched,
   explainMatch,
-} from "./types/match";
-
-// Types — regions and spatial
-export type {
-  ViewportRegion,
-  NormalizedRegion,
-  SpatialRelation,
-  SpatialQuery,
-} from "./types/region";
-export {
   isInside,
   overlaps,
   distance,
   spatialRelation,
   normalizeRegion,
-} from "./types/region";
+} from "./types";
+
+// Drift — Section 7
+// Note: also re-exports `compareSpecToRuntime` + `RuntimeSnapshot` from the
+// IR-builder's drift comparator. These live in `./ir-builder/drift` (a pure-
+// types module, no Node-only deps) so they're safe to surface from the
+// browser-bundled root entry. The full `./ir-builder` barrel must NOT be
+// re-exported here — see the subpath docs in `package.json`.
+export type { DriftEntry, DriftReport, RuntimeSnapshot } from "./ir-builder/drift";
+export { compareSpecToRuntime } from "./ir-builder/drift";
+export * from "./drift";
+
+// Regression — Section 9
+export * from "./regression";
+
+// Self-diagnosis — Section 10
+export * from "./diagnosis";
+
+// Visual / OCR / screenshot — Sections 8 + 9
+export * from "./visual";
+
+// DOM runtime — engine, state machine, actions, waits, batches, execution
+// `runtime` re-exports `TransitionAction` from `state/state-machine`, while
+// `types` exports `TransitionAction as TransitionActionDef` (different type).
+// To preserve the legacy root signature where `TransitionAction` resolved to
+// the runtime variant, re-export everything from `runtime` AFTER `types`.
+export * from "./runtime";
+
+// =============================================================================
+// Subsystems without a dedicated subpath (yet)
+// =============================================================================
 
 // Config — workflow
 export type {
@@ -147,290 +172,6 @@ export {
   mergeSearchConfig,
   validateSearchConfig,
 } from "./config/search-config";
-
-// Core
-export {
-  type ElementQuery,
-  type QueryResult,
-  type RankedQueryResult,
-  type FindFirstOptions,
-  type FindFirstResult,
-  type QueryableElement,
-  matchesQuery,
-  executeQuery,
-  findFirst,
-} from "./core/element-query";
-export { AutomationEngine, type EngineConfig } from "./core/engine";
-
-// Core — fuzzy matching
-export {
-  levenshteinDistance,
-  similarity,
-  isFuzzyMatch,
-  bestFuzzyMatch,
-  tokenMatch,
-} from "./core/fuzzy-match";
-
-// Core — semantic matching
-export {
-  type SemanticQuery,
-  type SemanticResult,
-  matchesSemantic,
-  semanticSearch,
-} from "./core/semantic-match";
-
-// Core — spatial queries
-export {
-  type NearQuery,
-  elementCenter,
-  elementDistance,
-  findNear,
-  computeRelation,
-  findByRelation,
-} from "./core/spatial-query";
-
-// Core — query ranking
-export {
-  type ScoreBreakdown,
-  type RankedResult,
-  computeMatchScore,
-  rankResults,
-} from "./core/query-ranking";
-
-// Core — query compiler
-export {
-  type CompiledQuery,
-  compileQuery,
-  QueryCache,
-} from "./core/query-compiler";
-
-// Core — query debugger
-export {
-  explainQueryMatch,
-  diagnoseNoResults,
-  formatExplanation,
-} from "./core/query-debugger";
-
-// State
-export {
-  StateMachine,
-  type StateDefinition,
-  type TransitionDefinition,
-  type TransitionAction,
-} from "./state/state-machine";
-export { StateDetector, type RegistryLike } from "./state/state-detector";
-export {
-  findPath,
-  NoPathError,
-  PathNode,
-  applyTransition as applyStateTransition,
-  getAvailableTransitions,
-  reconstructPath,
-  bfs,
-  dijkstra,
-  astar,
-  type Path,
-} from "./state/pathfinder";
-export {
-  executeTransition,
-  navigateToState,
-  type ActionExecutorLike,
-  TransitionError,
-} from "./state/transition-executor";
-
-// State — co-occurrence analysis
-export {
-  CoOccurrenceMatrix,
-  type CoOccurrenceData,
-} from "./state/co-occurrence";
-
-// State — automatic discovery
-export {
-  StateDiscovery,
-  type DiscoveryConfig,
-  type DiscoveredState,
-  type DiscoveredTransition,
-} from "./state/state-discovery";
-
-// State — graph export/import
-export {
-  exportGraph,
-  importGraph,
-  toMermaid,
-  toDot,
-  type GraphFormat,
-  type StateGraphData,
-} from "./state/state-graph";
-
-// State — reliability tracking
-export {
-  ReliabilityTracker,
-  type ReliabilityRecord,
-} from "./state/reliability";
-
-// State — enhanced navigation
-export {
-  bfsSearch,
-  astarSearch,
-  navigateToAny,
-  navigateToAll,
-  navigate,
-  type SearchStrategy,
-  type NavigationOptions,
-  type NavigationResult,
-} from "./state/navigation";
-
-// State — persistence
-export {
-  serialize,
-  deserialize,
-  mergeStateMachines,
-  validate,
-  type PersistedStateMachine,
-} from "./state/persistence";
-
-// Wait
-export { TimeoutError, type WaitOptions } from "./wait/types";
-export { waitForElement } from "./wait/wait-for-element";
-export { waitForState } from "./wait/wait-for-state";
-export { waitForIdle } from "./wait/wait-for-idle";
-export { waitForCondition } from "./wait/wait-for-condition";
-export { waitForChange, type WaitForChangeOptions } from "./wait/wait-for-change";
-export { waitForStable, type WaitForStableOptions } from "./wait/wait-for-stable";
-
-// Batch
-export {
-  type ActionStep,
-  type WaitSpec,
-  type SequenceOptions,
-  type ActionResult,
-  executeSequence,
-} from "./batch/action-sequence";
-export { type FlowDefinition, FlowRegistry } from "./batch/flow";
-
-// Discovery
-export { OverlayDetector } from "./discovery/overlay-detector";
-export { generateStableId } from "./discovery/stable-id";
-export {
-  type ElementFingerprint,
-  computeFingerprint,
-  fingerprintMatch,
-} from "./discovery/element-fingerprint";
-
-// Actions
-export {
-  type ActionTypeMetadata,
-  ACTION_METADATA,
-  validateActionParams,
-  getActionsByCategory,
-  type ActionExecutorConfig,
-  type ExecuteOptions,
-  ActionExecutor,
-  type ChainStep,
-  type ChainContext,
-  type ChainOptions,
-  type ChainResult,
-  type ChainExecutor,
-  type ClickUntilCondition,
-  createChainContext,
-  ActionChain,
-  actionStepsToChainSteps,
-  ChainBuilder,
-  ConditionalBuilder,
-  loop,
-  tryCatch,
-  switchCase,
-  repeatUntilElement,
-  clickUntil,
-  forEach,
-  retryChain,
-  priorityExecute,
-  type ChainHooks,
-  type CircuitBreakerConfig,
-  CircuitBreaker,
-  type BackoffStrategy,
-  type RetryOptions,
-  type DelayOptions,
-  createDefaultRetryOptions,
-  computeDelay,
-  withRetry,
-  extractValue,
-  extractToVariable,
-  interpolate,
-  evaluateExpression,
-  type StringOp,
-  type MathOp,
-  type CollectionOp,
-  stringOp,
-  mathOp,
-  collectionOp,
-  applyTransform,
-  computeExpression,
-  // DOM action implementations (canonical action execution)
-  DefaultDOMExecutor,
-  performClick,
-  performDoubleClick,
-  performRightClick,
-  performMiddleClick,
-  performType,
-  performSendKeys,
-  performClear,
-  performSelect,
-  performFocus,
-  performBlur,
-  performHover,
-  performScroll,
-  performScrollIntoView,
-  performCheck,
-  performToggle,
-  performDrag,
-  performSetValue,
-  performSubmit,
-  performReset,
-  performAutocomplete,
-  performAction,
-  type TypeParams,
-  type SendKeysParams,
-  type SelectParams,
-  type ScrollParams,
-  type ScrollIntoViewParams,
-  type DragParams,
-  type AutocompleteParams,
-  type MouseActionParams,
-  // DOM helpers
-  createMouseEvent,
-  createMouseEventAt,
-  elementFromPointSafe,
-  sleep,
-  findOpenDropdown,
-  findDropdownOption,
-  findScrollableElement,
-} from "./actions";
-
-// Execution engine
-export {
-  VariableContext,
-  type Connection,
-  type ConnectionCondition,
-  type RouteResult,
-  ConnectionRouter,
-  type CriteriaType,
-  type SuccessCriteria,
-  type NodeResult,
-  evaluateCriteria,
-  allMustPass,
-  anyMustPass,
-  percentageMustPass,
-  type ExecutionPhase,
-  type TrackerEvent,
-  ExecutionTracker,
-  type ExecutionControllerConfig,
-  ExecutionController,
-  type WorkflowGraph,
-  type WorkflowNode,
-  type ExecutionResult,
-  GraphExecutor,
-} from "./execution";
 
 // Server
 export { createAutoHandlers, type AutoHandlersConfig } from "./server/endpoints";
@@ -527,145 +268,23 @@ export {
   CallbackTelemetryEmitter,
 } from "./resolution";
 
-// Static state machine builder — DEPRECATED: replaced by spec-driven generation.
-// The static-builder module is no longer exported. Use spec-driven state machine
-// generation instead.
-
-// IR builder is intentionally NOT re-exported from the main entry. It is a
-// build-time tool — vite-plugin.ts, build-project-ir.ts, cli.ts, and
-// migrate-cli.ts depend on `node:fs`, `node:path`, and `ts-morph`, which
-// must never reach a browser bundle. Consumers that need the IR builder
-// (build configs, codemods, CLIs) import it explicitly via the subpath:
-//
-//   import { uiBridgeIRPlugin } from "@qontinui/ui-bridge-auto/ir-builder";
-//
-// Pre-2026-05-01 this entry re-exported `./ir-builder`, which caused the
-// runner's `vite build` to pull `ts-morph` into the browser bundle (8000+
-// modules) and hang. See `qontinui-runner/vite.config.ts` for the source-
-// resolution alias that exposed the leak.
-
-// Drift — Section 7 Phase 1: drift-hypothesis engine.
-// We re-export `compareSpecToRuntime` and its sibling types directly from the
-// drift comparator module rather than via `./ir-builder`, because the IR
-// builder barrel pulls in `ts-morph` / `node:fs` / `node:path` and must not
-// reach browser bundles (see the comment block above). `ir-builder/drift.ts`
-// itself is pure types + a deterministic diff — safe to surface.
-export type { DriftEntry, DriftReport, RuntimeSnapshot } from "./ir-builder/drift";
-export { compareSpecToRuntime } from "./ir-builder/drift";
-
-// Drift — hypothesis engine + git-log helper.
-export type {
-  GitCommitRef,
-  DriftHypothesis,
-  DriftContext,
-  RunGit,
-} from "./drift";
-export {
-  fetchGitLog,
-  parseGitLog,
-  defaultRunGit,
-  buildDriftHypotheses,
-} from "./drift";
-
-// Visual — highlights, OCR assertions, coordinate translation, screenshot comparison
-export {
-  ElementHighlightManager,
-  ACTION_HIGHLIGHT_COLORS,
-  extractElementText,
-  assertTextInElement,
-  type TextExtractionResult,
-  CoordinateTranslator,
-  type WindowLike,
-  InMemoryBaselineStore,
-  ScreenshotAssertionManager,
-  TesseractOCRProvider,
-  type TesseractProviderOptions,
-  IndexedDBBaselineStore,
-  type IndexedDBStoreOptions,
-  type HighlightOptions,
-  type ActiveHighlight,
-  type IOCRProvider,
-  type TextRegion,
-  type TextMatch,
-  type TextAssertionOptions,
-  type TextAssertionResult,
-  type CoordinatePoint,
-  type CoordinateSpace,
-  type CoordinateTranslation,
-  type ScrollInfo,
-  type FrameOffset,
-  type BaselineStore,
-  type ScreenshotAssertionOptions,
-  type ScreenshotAssertionResult,
-} from "./visual";
-
-// Visual + semantic fusion — Section 8.
-export {
-  computeVisibility,
-  overlayDetectorPredicate,
-  type VisibilityReport,
-  type VisibilityOccluder,
-  type ComputeVisibilityOptions,
-  type OverlayPredicate,
-  crossCheckText,
-  type TextCrossCheckResult,
-  type TextCrossCheckOk,
-  type TextCrossCheckSkipped,
-  type TextCrossCheckCause,
-  type CrossCheckTextOptions,
-  checkDesignTokens,
-  buildDesignTokenRegistry,
-  type DesignTokenRegistry,
-  type TokenViolation,
-  type CheckDesignTokensOptions,
-  runVisualDrift,
-  asDriftReport as visualDriftReportToDriftReport,
-  type VisualDriftReport,
-  type VisualDriftDetail,
-  type RunVisualDriftOptions,
-} from "./visual";
-
-// Section 8: re-export the helper from the discovery module's public surface.
+// Section 8 helper — overlay candidate predicate. Surfaces here for
+// backwards-compat with the legacy root export (the visual barrel re-exports
+// it via `overlayDetectorPredicate`, but the discovery-side raw helper is
+// what existing callers reach for).
 export { isOverlayCandidate } from "./discovery/overlay-detector";
 
-// Auto-regression generator — Section 9.
-export {
-  generateRegressionSuite,
-  serializeSuite,
-  deserializeSuite,
-  coverageOf,
-  deriveBaselineKey,
-  type RegressionSuite,
-  type RegressionCase,
-  type RegressionAssertion,
-  type StateActiveAssertion,
-  type ActionTargetResolvesAssertion,
-  type VisualGateAssertion,
-  type OverlayAssertion,
-  type AssertionOverlay,
-  type AssertionOverlayContext,
-  type GeneratorOptions,
-  type BaselineStoreMarker,
-  type CoverageReport,
-} from "./state/regression-generator";
-export {
-  visibilityOverlay,
-  tokenOverlay,
-  crossCheckOverlay,
-  type VisibilityOverlayOptions,
-  type CrossCheckOverlayOptions,
-} from "./state/regression-overlays";
+// Visual-drift legacy alias kept on root for byte-stable consumers.
+export { asDriftReport as visualDriftReportToDriftReport } from "./visual";
 
-// Self-diagnosis composer — Section 10.
-export {
-  diagnose,
-  serializeDiagnosis,
-  deserializeDiagnosis,
-  surfaceDiagnosis,
-  noopMemorySink,
-  type RegressionFailure,
-  type RegressionRunResult,
-  type SelfDiagnosis,
-  type DiagnoseOptions,
-  type MemorySink,
-} from "./state/self-diagnosis";
+// =============================================================================
+// Static state machine builder — DEPRECATED, no longer exported. Use spec-
+// driven state machine generation instead. See `runtime` subpath.
+//
+// IR builder is intentionally NOT re-exported here. It is a build-time tool —
+// vite-plugin.ts, build-project-ir.ts, cli.ts, and migrate-cli.ts depend on
+// `node:fs`, `node:path`, and `ts-morph`, which must never reach a browser
+// bundle. Consumers that need the IR builder import it explicitly via:
+//
+//   import { uiBridgeIRPlugin } from "@qontinui/ui-bridge-auto/ir-builder";
+// =============================================================================
