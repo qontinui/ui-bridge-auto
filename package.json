@@ -1,6 +1,6 @@
 {
   "name": "@qontinui/ui-bridge-auto",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "DOM-based model-based automation library for the UI Bridge SDK",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
