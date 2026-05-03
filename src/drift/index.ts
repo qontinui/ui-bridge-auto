@@ -1,27 +1,20 @@
 /**
  * Public surface for the drift-hypothesis engine (Section 7).
  *
- * Phase 1: additive only — does NOT modify the element-query API. Phase 2
- * lifts the query return shape in parallel.
- *
- * Browser-safe surface: `compareSpecToRuntime`, `DriftReport`, `DriftEntry`,
+ * Browser-safe by construction: this subpath has zero `node:child_process`
+ * references. `compareSpecToRuntime`, `DriftReport`, `DriftEntry`,
  * `RuntimeSnapshot`, `fetchGitLog`, `parseGitLog`, and `buildDriftHypotheses`
- * are pure / type-only and safe to bundle for browsers.
+ * are pure / type-only and bundle cleanly for any environment.
  *
- * The Node-only `defaultRunGit` (lazily imports `node:child_process`) is
- * still re-exported here for backward compatibility with Node consumers
- * (e.g. the runner). Bundlers that tree-shake unused ESM exports (Webpack 5,
- * esbuild, Rollup) MUST drop the import when callers only reference the
- * pure exports above. Browser callers MUST NOT import `defaultRunGit`.
+ * Node consumers that need to shell out to `git` import `defaultRunGit` from
+ * the dedicated `@qontinui/ui-bridge-auto/drift/node` subpath instead. The
+ * physical split lets build-time guards (qontinui-web's
+ * `check-browser-safe-imports`) assert this subpath stays Node-free without
+ * relying on tree-shaking.
  */
 
 export * from "./types";
-export {
-  fetchGitLog,
-  parseGitLog,
-  defaultRunGit,
-  type RunGit,
-} from "./git-log";
+export { fetchGitLog, parseGitLog, type RunGit } from "./git-log";
 export { buildDriftHypotheses } from "./hypothesis";
 
 // Spec-vs-runtime drift comparator. Lives in `ir-builder/drift.ts` because
