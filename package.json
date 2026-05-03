@@ -98,9 +98,7 @@
     }
   },
   "bin": {
-    "ui-bridge-build-ir": "./dist/ir-builder/cli.cjs",
-    "migrate-uibridge-spec": "./dist/ir-builder/migrate-cli.cjs",
-    "check-spec-pairing": "./dist/ir-builder/check-pairing.cjs"
+    "ui-bridge-build-ir": "./dist/ir-builder/cli.cjs"
   },
   "scripts": {
     "build": "tsup && test -s dist/index.d.ts",

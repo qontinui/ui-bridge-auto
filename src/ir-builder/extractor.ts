@@ -3,9 +3,6 @@
  * `<TransitionTo>` JSX declarations out into a neutral, IR-shaping-ready
  * structure.
  *
- * Composes with `static-builder/parsing/source-loader.ts` (`loadProject`) and
- * mirrors the ts-morph idioms used in `static-builder/parsing/component-parser.ts`.
- *
  * Limitations (v1):
  * - Only literal-prop forms are extracted. Computed expressions (e.g.
  *   `name={getName()}`) are recorded with the sentinel `__unsupported__` so

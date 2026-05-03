@@ -11,9 +11,8 @@ import { defineConfig } from "tsup";
 //      Emitted as CJS + ESM + DTS so consumers can import the slice they
 //      need without dragging the full DOM execution engine into their
 //      bundle. See `package.json#exports` for the public mapping.
-//   2. CLI entries (`src/ir-builder/cli.ts`, `src/ir-builder/migrate-cli.ts`,
-//      `src/ir-builder/check-pairing.ts`) bundled to `dist/ir-builder/*.cjs`
-//      so they can be invoked directly via the `bin` field in package.json.
+//   2. CLI entry (`src/ir-builder/cli.ts`) bundled to `dist/ir-builder/cli.cjs`
+//      so it can be invoked directly via the `bin` field in package.json.
 //   3. IR-builder library subpath — exposes the Vite plugin / extractor /
 //      emitter / build-project-ir / drift comparator as
 //      `@qontinui/ui-bridge-auto/ir-builder`. Kept off the main entry so
@@ -50,8 +49,6 @@ export default defineConfig([
   {
     entry: {
       "ir-builder/cli": "src/ir-builder/cli.ts",
-      "ir-builder/migrate-cli": "src/ir-builder/migrate-cli.ts",
-      "ir-builder/check-pairing": "src/ir-builder/check-pairing.ts",
     },
     format: ["cjs"],
     outExtension: () => ({ js: ".cjs" }),

@@ -278,13 +278,10 @@ export { isOverlayCandidate } from "./discovery/overlay-detector";
 export { asDriftReport as visualDriftReportToDriftReport } from "./visual";
 
 // =============================================================================
-// Static state machine builder — DEPRECATED, no longer exported. Use spec-
-// driven state machine generation instead. See `runtime` subpath.
-//
 // IR builder is intentionally NOT re-exported here. It is a build-time tool —
-// vite-plugin.ts, build-project-ir.ts, cli.ts, and migrate-cli.ts depend on
-// `node:fs`, `node:path`, and `ts-morph`, which must never reach a browser
-// bundle. Consumers that need the IR builder import it explicitly via:
+// vite-plugin.ts, build-project-ir.ts, and cli.ts depend on `node:fs`,
+// `node:path`, and `ts-morph`, which must never reach a browser bundle.
+// Consumers that need the IR builder import it explicitly via:
 //
 //   import { uiBridgeIRPlugin } from "@qontinui/ui-bridge-auto/ir-builder";
 // =============================================================================
