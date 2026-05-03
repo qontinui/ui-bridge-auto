@@ -30,9 +30,13 @@ import {
 } from "@qontinui/shared-types/ui-bridge-ir";
 
 import {
+  applyAcceptDrift,
   checkOne,
+  isPolicyExpired,
   parseArgs,
   runCheckPairingCli,
+  type IRAcceptDriftPolicy,
+  type IRPairingAxis,
 } from "../check-pairing";
 
 // ---------------------------------------------------------------------------
@@ -378,5 +382,262 @@ describe("runCheckPairingCli — exit codes by mode", () => {
     );
     expect(code).toBe(0);
     expect(cap.stdout).toMatch(/paired: 1/);
+  });
+});
+
+// ===========================================================================
+// IRPairingPolicy.acceptDrift
+// ===========================================================================
+
+describe("isPolicyExpired", () => {
+  it("returns false when expiresAt is undefined", () => {
+    const policy: IRAcceptDriftPolicy = {
+      axes: ["assertionCount"],
+      reason: "test",
+      since: "2026-01-01",
+    };
+    expect(isPolicyExpired(policy)).toBe(false);
+  });
+
+  it("returns false when expiresAt is in the future", () => {
+    const policy: IRAcceptDriftPolicy = {
+      axes: ["assertionCount"],
+      reason: "test",
+      since: "2026-01-01",
+      expiresAt: "2099-12-31",
+    };
+    expect(isPolicyExpired(policy)).toBe(false);
+  });
+
+  it("returns true when expiresAt is strictly before today", () => {
+    const policy: IRAcceptDriftPolicy = {
+      axes: ["assertionCount"],
+      reason: "test",
+      since: "2020-01-01",
+      expiresAt: "2020-12-31",
+    };
+    // Pin "now" so the test is deterministic.
+    expect(isPolicyExpired(policy, new Date("2026-05-03T00:00:00Z"))).toBe(true);
+  });
+
+  it("returns false when expiresAt is today (exclusive comparison)", () => {
+    const policy: IRAcceptDriftPolicy = {
+      axes: ["assertionCount"],
+      reason: "test",
+      since: "2020-01-01",
+      expiresAt: "2026-05-03",
+    };
+    expect(isPolicyExpired(policy, new Date("2026-05-03T12:00:00Z"))).toBe(false);
+  });
+});
+
+describe("applyAcceptDrift", () => {
+  it("partitions mismatches into kept (unaccepted) and accepted (tolerated)", () => {
+    const mismatches = [
+      { field: "groupCount" as const, legacy: 3, ir: 2 },
+      { field: "assertionCount" as const, legacy: 10, ir: 8 },
+    ];
+    const { kept, accepted } = applyAcceptDrift(mismatches, ["groupCount"]);
+    expect(kept).toEqual([{ field: "assertionCount", legacy: 10, ir: 8 }]);
+    expect(accepted).toEqual([{ field: "groupCount", legacy: 3, ir: 2 }]);
+  });
+
+  it("keeps everything when axes is empty", () => {
+    const mismatches = [{ field: "groupCount" as const, legacy: 3, ir: 2 }];
+    const { kept, accepted } = applyAcceptDrift(mismatches, []);
+    expect(kept).toEqual(mismatches);
+    expect(accepted).toEqual([]);
+  });
+
+  it("accepts everything when all axes are listed", () => {
+    const mismatches = [
+      { field: "groupCount" as const, legacy: 3, ir: 2 },
+      { field: "assertionCount" as const, legacy: 10, ir: 8 },
+    ];
+    const allAxes: IRPairingAxis[] = [
+      "groupCount",
+      "groupIds",
+      "assertionCount",
+    ];
+    const { kept, accepted } = applyAcceptDrift(mismatches, allAxes);
+    expect(kept).toEqual([]);
+    expect(accepted).toEqual(mismatches);
+  });
+});
+
+/**
+ * Build an IR document that diverges from `SAMPLE_LEGACY`'s shape, optionally
+ * carrying a `pairingPolicy.acceptDrift` block. Used to exercise the policy
+ * reader.
+ */
+function setupDriftFixture(opts: {
+  pageId: string;
+  policy?: IRAcceptDriftPolicy;
+}) {
+  // Build an IR where the IR's forward projection has fewer groups + fewer
+  // assertions than SAMPLE_LEGACY — ordinary mismatch surface.
+  const fullIR = projectLegacyToIR(SAMPLE_LEGACY as never, { docId: opts.pageId });
+  const driftedIR: IRDocument & { pairingPolicy?: unknown } = {
+    ...fullIR,
+    states: fullIR.states.slice(0, 1),
+  };
+  if (opts.policy !== undefined) {
+    driftedIR.pairingPolicy = { acceptDrift: opts.policy };
+  }
+  return setupRunnerFixture({
+    pageId: opts.pageId,
+    legacy: SAMPLE_LEGACY,
+    ir: driftedIR as IRDocument,
+  });
+}
+
+describe("checkOne — pairingPolicy.acceptDrift", () => {
+  it("reports `accepted-drift` when policy covers all mismatched axes", () => {
+    const fx = setupDriftFixture({
+      pageId: "active",
+      policy: {
+        axes: ["groupCount", "groupIds", "assertionCount"],
+        reason: "section-2 hand-authored canonical-state sample",
+        since: "2026-04-15",
+      },
+    });
+    const result = checkOne(fx.legacyPath, fx.repoRoot, "qontinui-runner");
+    expect(result.status).toBe("accepted-drift");
+    expect(result.acceptedAxes).toEqual(
+      expect.arrayContaining(["groupCount", "assertionCount"]),
+    );
+    expect(result.policyReason).toBe(
+      "section-2 hand-authored canonical-state sample",
+    );
+    expect(result.mismatches).toBeUndefined();
+  });
+
+  it("still reports `mismatched` when policy covers only some axes", () => {
+    const fx = setupDriftFixture({
+      pageId: "active-partial",
+      policy: {
+        axes: ["groupIds"], // doesn't cover groupCount/assertionCount
+        reason: "partial",
+        since: "2026-04-15",
+      },
+    });
+    const result = checkOne(fx.legacyPath, fx.repoRoot, "qontinui-runner");
+    expect(result.status).toBe("mismatched");
+    // The remaining unaccepted axes should be in mismatches.
+    const fields = (result.mismatches ?? []).map((m) => m.field);
+    expect(fields).toContain("groupCount");
+  });
+
+  it("ignores policy when expiresAt has passed and downgrades to `mismatched`", () => {
+    const fx = setupDriftFixture({
+      pageId: "expired",
+      policy: {
+        axes: ["groupCount", "groupIds", "assertionCount"],
+        reason: "stale",
+        since: "2020-01-01",
+        expiresAt: "2020-12-31",
+      },
+    });
+    const result = checkOne(fx.legacyPath, fx.repoRoot, "qontinui-runner");
+    expect(result.status).toBe("mismatched");
+    expect(result.policyExpired).toBe(true);
+    expect(result.policyReason).toBe("stale");
+  });
+
+  it("still reports `paired` when there are no mismatches even with a policy declared", () => {
+    // Use `from-legacy` IR (clean round-trip) plus a policy block — the
+    // policy should be a no-op since there's nothing to filter.
+    const cleanIR = projectLegacyToIR(SAMPLE_LEGACY as never, {
+      docId: "clean-with-policy",
+    });
+    const irWithPolicy = {
+      ...cleanIR,
+      pairingPolicy: {
+        acceptDrift: {
+          axes: ["groupCount" as const],
+          reason: "unused",
+          since: "2026-01-01",
+        },
+      },
+    };
+    const fx = setupRunnerFixture({
+      pageId: "clean-with-policy",
+      legacy: SAMPLE_LEGACY,
+      ir: irWithPolicy as IRDocument,
+    });
+    const result = checkOne(fx.legacyPath, fx.repoRoot, "qontinui-runner");
+    expect(result.status).toBe("paired");
+    expect(result.acceptedAxes).toBeUndefined();
+  });
+});
+
+describe("runCheckPairingCli — block mode honors acceptDrift", () => {
+  it("exits 0 in block mode when all mismatches are policy-tolerated", () => {
+    const fullIR = projectLegacyToIR(SAMPLE_LEGACY as never, { docId: "active" });
+    const driftedIR = {
+      ...fullIR,
+      states: fullIR.states.slice(0, 1),
+      pairingPolicy: {
+        acceptDrift: {
+          axes: ["groupCount", "groupIds", "assertionCount"],
+          reason: "intentional",
+          since: "2026-04-15",
+        },
+      },
+    };
+    setupRunnerFixture({
+      pageId: "active",
+      legacy: SAMPLE_LEGACY,
+      ir: driftedIR as IRDocument,
+    });
+    const cap = captureIO();
+    const code = runCheckPairingCli(
+      [
+        "--root",
+        join(workdir, "qontinui-runner"),
+        "--app",
+        "qontinui-runner",
+        "--mode=block",
+      ],
+      cap.io,
+    );
+    expect(code).toBe(0);
+    expect(cap.stdout).toMatch(/accepted-drift: 1/);
+    expect(cap.stdout).toMatch(/mismatched: 0/);
+  });
+
+  it("exits 1 in block mode when an exempted policy has expired", () => {
+    const fullIR = projectLegacyToIR(SAMPLE_LEGACY as never, { docId: "expired" });
+    const driftedIR = {
+      ...fullIR,
+      states: fullIR.states.slice(0, 1),
+      pairingPolicy: {
+        acceptDrift: {
+          axes: ["groupCount", "groupIds", "assertionCount"],
+          reason: "stale",
+          since: "2020-01-01",
+          expiresAt: "2020-12-31",
+        },
+      },
+    };
+    setupRunnerFixture({
+      pageId: "expired",
+      legacy: SAMPLE_LEGACY,
+      ir: driftedIR as IRDocument,
+    });
+    const cap = captureIO();
+    const code = runCheckPairingCli(
+      [
+        "--root",
+        join(workdir, "qontinui-runner"),
+        "--app",
+        "qontinui-runner",
+        "--mode=block",
+      ],
+      cap.io,
+    );
+    expect(code).toBe(1);
+    expect(cap.stdout).toMatch(/expired-policies: 1/);
+    expect(cap.stderr).toMatch(/policy EXPIRED/);
   });
 });
