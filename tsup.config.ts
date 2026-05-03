@@ -5,11 +5,17 @@ import { defineConfig } from "tsup";
 // This is the tsup-side half of the Phase 3 Item 8 guard — the other half
 // is the `test -s dist/index.d.ts` post-check in the npm script.
 //
-// Two configs are emitted:
+// Four logical bundles are emitted:
 //   1. Library entry (`src/index.ts`) — CJS + ESM + DTS.
-//   2. CLI entries (`src/ir-builder/cli.ts`, `src/ir-builder/migrate-cli.ts`)
-//      bundled to `dist/ir-builder/*.cjs` so they can be invoked directly via
-//      the `bin` field in package.json.
+//   2. CLI entry (`src/ir-builder/cli.ts`) bundled to `dist/ir-builder/cli.cjs`
+//      so it can be invoked directly via the `bin` field in package.json.
+//   3. IR-builder library subpath (`src/ir-builder/index.ts`) — exposes the
+//      Vite plugin / extractor / emitter / build-project-ir / drift comparator
+//      as `@qontinui/ui-bridge-auto/ir-builder`. Kept off the main entry so
+//      the Node-only deps (`node:fs`, `node:path`, `ts-morph`) don't leak
+//      into a browser bundle when the runner's Vite alias resolves the
+//      package to source.
+//   4. Metro plugin — standalone CJS for `metro.config.js` consumption.
 export default defineConfig([
   {
     entry: ["src/index.ts"],
@@ -27,8 +33,6 @@ export default defineConfig([
   {
     entry: {
       "ir-builder/cli": "src/ir-builder/cli.ts",
-      "ir-builder/migrate-cli": "src/ir-builder/migrate-cli.ts",
-      "ir-builder/check-pairing": "src/ir-builder/check-pairing.ts",
     },
     format: ["cjs"],
     outExtension: () => ({ js: ".cjs" }),
