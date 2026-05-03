@@ -31,6 +31,7 @@ export default defineConfig([
       index: "src/index.ts",
       "types/index": "src/types/index.ts",
       "drift/index": "src/drift/index.ts",
+      "drift/node": "src/drift/node.ts",
       "regression/index": "src/regression/index.ts",
       "diagnosis/index": "src/diagnosis/index.ts",
       "visual/index": "src/visual/index.ts",
