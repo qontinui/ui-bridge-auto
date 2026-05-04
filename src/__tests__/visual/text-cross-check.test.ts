@@ -70,10 +70,8 @@ describe("crossCheckText", () => {
     }
   });
 
-  it("fails with classification when OCR returns empty AND font-display is swap", async () => {
-    const el = makeElement("Submit", (e) => {
-      e.style.setProperty("font-display", "swap");
-    });
+  it("classifies non-empty DOM text + empty OCR as font-not-loaded", async () => {
+    const el = makeElement("Submit");
     const r = await crossCheckText(el, { ocrText: "" });
     expect(r.skipped).toBe(false);
     if (!r.skipped) {

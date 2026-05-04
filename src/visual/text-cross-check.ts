@@ -388,6 +388,12 @@ function parseColor(css: string): RGB | null {
   // rgb / rgba notation as returned by getComputedStyle. Capture the
   // optional alpha so callers can treat fully-transparent colors as
   // "not really painted" rather than "black".
+  //
+  // v1 limitation: only `rgb()` / `rgba()` are recognised — that's what
+  // `getComputedStyle` normalises every color to in practice. 3-digit
+  // hex, named colors (e.g. `red`), and modern syntaxes (`oklch()`,
+  // `color()`) return null. Catalogs that hand-code those for token
+  // values will get a "no match" rather than a comparison.
   const m = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)/.exec(
     css,
   );

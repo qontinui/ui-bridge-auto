@@ -45,10 +45,9 @@ export interface ElementQuery {
 
   /**
    * Visibility-aware scoring (Section 8). When set, ranking penalises
-   * candidates whose `visibilityRatio` (computed externally and threaded
-   * through `el.getState().computedStyles?.["visibility-ratio"]` or via the
-   * `state.value` carrier) falls short of `minRatio`. The boolean form
-   * `true` is shorthand for `{ minRatio: 1.0 }`.
+   * candidates whose `el.getState().visibilityRatio` (the typed carrier
+   * populated by `computeVisibility` or another producer) falls short of
+   * `minRatio`. The boolean form `true` is shorthand for `{ minRatio: 1.0 }`.
    *
    * NOTE: this is a SCORING criterion only. Use `visible` (boolean) to
    * FILTER. Visibility scoring keeps invisible elements in the result set
