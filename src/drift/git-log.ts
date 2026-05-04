@@ -152,31 +152,9 @@ export function parseGitLog(stdout: string): GitCommitRef[] {
 }
 
 // ---------------------------------------------------------------------------
-// Default Node runner — opt-in. Do NOT call this from `fetchGitLog`.
+// Default Node runner — moved to `git-log-node.ts` for subpath isolation.
+// Import from `@qontinui/ui-bridge-auto/drift/node` (Node consumers only).
 // ---------------------------------------------------------------------------
-
-/**
- * Default `RunGit` implementation backed by `child_process.execFile`.
- *
- * Node-only. Browser consumers and consumers who want to shell out via a
- * different mechanism (workspace-relative `git`, custom auth) provide
- * their own `RunGit`.
- *
- * Imports `node:child_process` lazily so this module stays bundleable for
- * non-Node environments — bundlers that tree-shake unused exports will
- * drop the import entirely if `defaultRunGit` is never called.
- */
-export const defaultRunGit: RunGit = async (args) => {
-  // Lazy require keeps `node:child_process` out of browser bundles.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const cp = await import("node:child_process");
-  return new Promise<string>((resolve, reject) => {
-    cp.execFile("git", args, { maxBuffer: 32 * 1024 * 1024 }, (err, stdout) => {
-      if (err) reject(err);
-      else resolve(stdout.toString());
-    });
-  });
-};
 
 // ---------------------------------------------------------------------------
 // Helpers

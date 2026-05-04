@@ -85,4 +85,12 @@ export interface DriftContext {
   /** Output of `compareSpecToRuntime`. Becomes additional evidence for
    * hypotheses that name the same id/file. */
   specDrift?: DriftReport;
+  /**
+   * Visual drift report (Section 8). Same shape as `specDrift` —
+   * `DriftReport` with entries of `kind: "visual-drift"`. Kept on a separate
+   * field rather than folded into `specDrift` so the hypothesis engine can
+   * weight pixel-level drift differently from structural drift (a 5px shift
+   * is rarely a root cause; a missing element usually is).
+   */
+  visualDrift?: DriftReport;
 }

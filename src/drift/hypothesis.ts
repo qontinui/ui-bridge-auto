@@ -100,6 +100,26 @@ export function buildDriftHypotheses(
     }
   }
 
+  // (3) One hypothesis per visual-drift cluster. Section 8: visual drift
+  // (pixel-level baseline divergence) is folded into the same hypothesis
+  // surface as structural drift, but each cluster entry contributes a smaller
+  // weight (0.5 per entry vs. 1.0 for structural drift). Pixel shifts are
+  // weaker root-cause signals than missing/extra states, but still useful
+  // tie-breakers when fragility + commit overlap don't decide things alone.
+  if (context.visualDrift) {
+    for (const cluster of clusterSpecDrift(context.visualDrift, context.ir)) {
+      hypotheses.push(
+        buildVisualDriftHypothesis(
+          cluster,
+          resolved,
+          context.commits,
+          priorById,
+          recencyOf,
+        ),
+      );
+    }
+  }
+
   hypotheses.sort(byConfidenceThenStableTiebreaker);
   return hypotheses;
 }
@@ -121,6 +141,18 @@ function resolveDivergence(
   session: RecordingSession,
   ir: IRDocument | undefined,
 ): ResolvedDivergence {
+  // Prefer caller-supplied provenance when present. Section 10 regression
+  // failures populate `predicateId` and/or `sourceFile` directly from IR
+  // (their `eventIndex` is `-1`, so the session lookup would yield `null`
+  // for both). Replay/counterfactual divergences carry neither field and
+  // fall through to the session-events path.
+  if (divergence.sourceFile !== undefined || divergence.predicateId !== undefined) {
+    const predicateId = divergence.predicateId ?? null;
+    const sourceFile =
+      divergence.sourceFile ??
+      (predicateId !== null ? resolveSourceFile(predicateId, ir) : null);
+    return { divergence, predicateId, sourceFile };
+  }
   const event = session.events[divergence.eventIndex];
   const predicateId = extractPredicateId(event);
   const sourceFile = predicateId !== null
@@ -404,6 +436,93 @@ function buildSpecDriftHypothesis(
 
   return {
     hypothesis: `spec drift cluster — ${cluster.entries.length} ${pluralize("entry", cluster.entries.length)} on ${cluster.file}`,
+    evidence,
+    suspectedCommits: implicatedCommits,
+    suspectedFiles,
+    confidence,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Visual-drift cluster hypothesis
+// ---------------------------------------------------------------------------
+
+const VISUAL_DRIFT_ENTRY_WEIGHT = 0.5;
+
+/**
+ * Build a hypothesis for a cluster of visual-drift entries (Section 8).
+ *
+ * Mirrors `buildSpecDriftHypothesis` but with two intentional differences:
+ *
+ * 1. **Per-entry weight is 0.5**, not 1.0. Pixel-level drift is a weaker
+ *    root-cause signal than structural drift — a 5px shift is rarely a real
+ *    cause; a missing/extra state usually is.
+ * 2. **Hypothesis label is prefixed `visual drift cluster`**, not
+ *    `spec drift cluster`, so consumers can distinguish the two on the
+ *    rendered list.
+ *
+ * Everything else — file clustering, recency averaging, fragility lookup,
+ * sort order — matches the spec-drift path.
+ */
+function buildVisualDriftHypothesis(
+  cluster: SpecDriftCluster,
+  resolved: ResolvedDivergence[],
+  commits: GitCommitRef[],
+  priorById: Map<string, number>,
+  recencyOf: (sha: string) => number,
+): DriftHypothesis {
+  const clusterIds = new Set(cluster.entries.map((e) => e.id));
+  const evidence: DivergenceLike[] = [];
+  let weightSum = 0;
+
+  const implicatedCommits = sortCommits(
+    cluster.file === "<unknown>"
+      ? []
+      : commits.filter((c) => c.files.includes(cluster.file)),
+  );
+
+  const avgRecency = avg(implicatedCommits.map((c) => recencyOf(c.sha)));
+
+  for (const r of resolved) {
+    const matchesCluster =
+      (r.sourceFile !== null && r.sourceFile === cluster.file) ||
+      (r.predicateId !== null && clusterIds.has(r.predicateId));
+    if (!matchesCluster) continue;
+
+    const fileOverlap = r.sourceFile === cluster.file ? 1 : 0;
+    const fragility = r.predicateId !== null
+      ? priorById.get(r.predicateId) ?? 0
+      : 0;
+    const hasSignal = fileOverlap > 0 || fragility > 0;
+    const recencyContribution = hasSignal ? avgRecency : 0;
+
+    const w = fileOverlap + fragility + recencyContribution;
+    if (w > 0) {
+      evidence.push(r.divergence);
+      weightSum += w;
+    }
+  }
+
+  // Visual-drift entries are direct evidence too, but at half the weight
+  // of structural drift (see VISUAL_DRIFT_ENTRY_WEIGHT). Cap at the
+  // per-divergence cap so confidence stays bounded.
+  const entryWeight = Math.min(
+    cluster.entries.length * VISUAL_DRIFT_ENTRY_WEIGHT,
+    PER_DIVERGENCE_MAX_WEIGHT,
+  );
+  weightSum += entryWeight;
+
+  const totalEvidenceCount =
+    evidence.length + (cluster.entries.length > 0 ? 1 : 0);
+  const denom = Math.max(1, totalEvidenceCount) * PER_DIVERGENCE_MAX_WEIGHT;
+  const confidence = totalEvidenceCount === 0
+    ? 0
+    : clamp01(weightSum / denom);
+
+  const suspectedFiles = cluster.file === "<unknown>" ? [] : [cluster.file];
+
+  return {
+    hypothesis: `visual drift cluster — ${cluster.entries.length} ${pluralize("entry", cluster.entries.length)} on ${cluster.file}`,
     evidence,
     suspectedCommits: implicatedCommits,
     suspectedFiles,

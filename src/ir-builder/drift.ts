@@ -47,10 +47,20 @@ export interface RuntimeSnapshot {
  * A single drift finding. `id` is the IR or runtime node id (transition
  * shape-mismatch entries reuse the transition id; state shape-mismatches
  * reuse the state id).
+ *
+ * `kind` extension history:
+ * - Section 2: "missing-in-runtime" | "missing-in-ir" | "shape-mismatch"
+ * - Section 8: "visual-drift" added so pixel-level divergences from a stored
+ *   baseline flow through the same `DriftReport` / `DriftEntry` plumbing as
+ *   structural drift. See `visual/visual-drift.ts`.
  */
 export interface DriftEntry {
   id: string;
-  kind: "missing-in-runtime" | "missing-in-ir" | "shape-mismatch";
+  kind:
+    | "missing-in-runtime"
+    | "missing-in-ir"
+    | "shape-mismatch"
+    | "visual-drift";
   /** Human-readable summary of the divergence. */
   detail: string;
 }
