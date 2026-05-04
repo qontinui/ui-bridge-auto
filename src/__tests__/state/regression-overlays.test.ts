@@ -130,7 +130,8 @@ function ctxFor(
     assertions: [],
     ...caseOverrides,
   };
-  return { ir, case: partial, transition };
+  const stateById = new Map(ir.states.map((s) => [s.id, s] as const));
+  return { ir, case: partial, transition, stateById };
 }
 
 // ---------------------------------------------------------------------------
@@ -196,21 +197,18 @@ describe("visibilityOverlay", () => {
   it("sorts output by assertionId ascending", () => {
     // Two activated states out-of-order in the case.
     const ir = makeFixtureIR();
-    const tx = ir.transitions.find((t) => t.id === "t-a-to-b")!;
     // Build a multi-activate fixture: pretend the transition activates both
     // a and b. The case fixture supplies activateStates in declared order
     // but the overlay must sort.
     const overlay = visibilityOverlay();
-    const c: RegressionCase = {
-      id: tx.id,
-      transitionId: tx.id,
+    const ctx = ctxFor(ir, "t-a-to-b", {
       fromStates: ["a"],
       // Intentionally reverse-sorted to force the overlay to re-sort.
       activateStates: ["b", "a"],
       exitStates: ["a"],
       assertions: [],
-    };
-    const out = overlay.apply({ ir, case: c, transition: tx });
+    });
+    const out = overlay.apply(ctx);
     const ids = out.map((a) => (a as OverlayAssertion).assertionId);
     const sorted = [...ids].sort();
     expect(ids).toEqual(sorted);
@@ -273,17 +271,14 @@ describe("tokenOverlay", () => {
 
   it("sorts output by assertionId ascending across multi-state activation", () => {
     const ir = makeFixtureIR();
-    const tx = ir.transitions.find((t) => t.id === "t-a-to-b")!;
     const overlay = tokenOverlay(makeStubRegistry());
-    const c: RegressionCase = {
-      id: tx.id,
-      transitionId: tx.id,
+    const ctx = ctxFor(ir, "t-a-to-b", {
       fromStates: ["a"],
       activateStates: ["b", "a"], // reverse-sorted on purpose
       exitStates: ["a"],
       assertions: [],
-    };
-    const out = overlay.apply({ ir, case: c, transition: tx });
+    });
+    const out = overlay.apply(ctx);
     const ids = out.map((a) => (a as OverlayAssertion).assertionId);
     const sorted = [...ids].sort();
     expect(ids).toEqual(sorted);

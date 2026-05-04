@@ -32,7 +32,6 @@
  */
 
 import type {
-  IRDocument,
   IRElementCriteria,
   IRTransitionAction,
 } from "@qontinui/shared-types/ui-bridge-ir";
@@ -60,19 +59,6 @@ function sortByAssertionId(
   assertions: readonly OverlayAssertion[],
 ): OverlayAssertion[] {
   return [...assertions].sort((a, b) => byString(a.assertionId, b.assertionId));
-}
-
-/**
- * Index IR states by id. Local helper — duplicated from
- * `regression-generator.ts` rather than shared to keep this module's
- * dependency surface to public exports only (the indexer there is
- * file-private). Computing it once per overlay invocation is cheap given
- * realistic state counts.
- */
-function indexStatesById(ir: IRDocument): Map<string, IRDocument["states"][number]> {
-  const m = new Map<string, IRDocument["states"][number]>();
-  for (const s of ir.states) m.set(s.id, s);
-  return m;
 }
 
 /**
@@ -129,7 +115,7 @@ export function visibilityOverlay(
   return {
     id: "visibility",
     apply(ctx: AssertionOverlayContext): RegressionAssertion[] {
-      const stateById = indexStatesById(ctx.ir);
+      const stateById = ctx.stateById;
       const out: OverlayAssertion[] = [];
       // ctx.case.activateStates is already sorted ascending by Phase 1; we
       // copy + sort defensively so this overlay doesn't depend on the
@@ -198,7 +184,7 @@ export function tokenOverlay(
   return {
     id: "token",
     apply(ctx: AssertionOverlayContext): RegressionAssertion[] {
-      const stateById = indexStatesById(ctx.ir);
+      const stateById = ctx.stateById;
       const out: OverlayAssertion[] = [];
       const stateIds = [...ctx.case.activateStates].sort(byString);
       for (const stateId of stateIds) {
