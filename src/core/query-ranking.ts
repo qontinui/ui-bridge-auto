@@ -85,8 +85,11 @@ export function computeMatchScore(
 
 /**
  * Compute the full score breakdown for an element against a query.
+ *
+ * Exported so the element-query module can attach a `ScoreBreakdown` to
+ * every `RankedQueryResult` without re-implementing scoring.
  */
-function computeScoreBreakdown(
+export function computeScoreBreakdown(
   el: QueryableElement,
   query: ElementQuery,
 ): { score: number; scores: ScoreBreakdown } {

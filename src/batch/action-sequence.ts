@@ -83,8 +83,8 @@ async function executeWait(
       if (!spec.query) break;
       const deadline = Date.now() + timeout;
       while (Date.now() < deadline) {
-        const found = findFirst(registry.getAllElements(), spec.query);
-        if (found) return;
+        const { match } = findFirst(registry.getAllElements(), spec.query);
+        if (match) return;
         await new Promise<void>((resolve) => setTimeout(resolve, 50));
       }
       throw new Error(`Wait for element timed out after ${timeout}ms`);
@@ -110,8 +110,8 @@ async function executeWait(
       if (!spec.query) break;
       const deadline = Date.now() + timeout;
       while (Date.now() < deadline) {
-        const found = findFirst(registry.getAllElements(), spec.query);
-        if (!found) return;
+        const { match } = findFirst(registry.getAllElements(), spec.query);
+        if (!match) return;
         await new Promise<void>((resolve) => setTimeout(resolve, 50));
       }
       throw new Error(`Wait for element to vanish timed out after ${timeout}ms`);
@@ -120,9 +120,11 @@ async function executeWait(
     case "change": {
       if (!spec.query) break;
       const changeDeadline = Date.now() + timeout;
-      const initialFound = findFirst(registry.getAllElements(), spec.query) !== null;
+      const initialFound =
+        findFirst(registry.getAllElements(), spec.query).match !== null;
       while (Date.now() < changeDeadline) {
-        const nowFound = findFirst(registry.getAllElements(), spec.query) !== null;
+        const nowFound =
+          findFirst(registry.getAllElements(), spec.query).match !== null;
         if (nowFound !== initialFound) return;
         await new Promise<void>((resolve) => setTimeout(resolve, 50));
       }
@@ -133,10 +135,12 @@ async function executeWait(
       if (!spec.query) break;
       const stableDeadline = Date.now() + timeout;
       const quietMs = (spec as { quietPeriodMs?: number }).quietPeriodMs ?? 500;
-      let lastFound = findFirst(registry.getAllElements(), spec.query) !== null;
+      let lastFound =
+        findFirst(registry.getAllElements(), spec.query).match !== null;
       let lastChangeAt = Date.now();
       while (Date.now() < stableDeadline) {
-        const nowFound = findFirst(registry.getAllElements(), spec.query) !== null;
+        const nowFound =
+          findFirst(registry.getAllElements(), spec.query).match !== null;
         if (nowFound !== lastFound) {
           lastFound = nowFound;
           lastChangeAt = Date.now();
@@ -182,7 +186,7 @@ export async function executeSequence(
       }
 
       // Find target element
-      const match = findFirst(registry.getAllElements(), step.target);
+      const { match } = findFirst(registry.getAllElements(), step.target);
       if (!match) {
         throw new Error("Target element not found");
       }

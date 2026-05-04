@@ -8,8 +8,14 @@
  * 3. Builds a fast-path index key for id/role combinations.
  */
 
-import type { QueryableElement, ElementQuery, QueryResult } from "./element-query";
+import type {
+  QueryableElement,
+  ElementQuery,
+  RankedQueryResult,
+  FindFirstResult,
+} from "./element-query";
 import { matchesQuery, executeQuery, findFirst } from "./element-query";
+import { computeScoreBreakdown } from "./query-ranking";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,11 +32,14 @@ export interface CompiledQuery {
   /** The original query that was compiled. */
   readonly source: ElementQuery;
 
-  /** Execute against all elements, returning every match. */
-  execute(elements: QueryableElement[]): QueryResult[];
+  /**
+   * Execute against all elements, returning every match with a per-criterion
+   * score breakdown. Results are sorted by descending composite score.
+   */
+  execute(elements: QueryableElement[]): RankedQueryResult[];
 
   /** Execute and return the first match, or `null` if none. */
-  first(elements: QueryableElement[]): QueryResult | null;
+  first(elements: QueryableElement[]): FindFirstResult;
 
   /** Check if any element in the collection matches. */
   test(elements: QueryableElement[]): boolean;
@@ -225,33 +234,40 @@ export function compileQuery(query: ElementQuery): CompiledQuery {
         return fastMatch(element);
       },
 
-      execute(elements: QueryableElement[]): QueryResult[] {
-        const results: QueryResult[] = [];
+      execute(elements: QueryableElement[]): RankedQueryResult[] {
+        const results: RankedQueryResult[] = [];
         for (const el of elements) {
           if (fastMatch(el)) {
+            const { scores } = computeScoreBreakdown(el, frozen);
             results.push({
               id: el.id,
               label: el.label,
               type: el.type,
               matchReasons: [`id=${el.id}`],
+              score: scores,
             });
           }
         }
         return results;
       },
 
-      first(elements: QueryableElement[]): QueryResult | null {
+      first(elements: QueryableElement[]): FindFirstResult {
         for (const el of elements) {
           if (fastMatch(el)) {
+            const { scores } = computeScoreBreakdown(el, frozen);
             return {
-              id: el.id,
-              label: el.label,
-              type: el.type,
-              matchReasons: [`id=${el.id}`],
+              match: {
+                id: el.id,
+                label: el.label,
+                type: el.type,
+                matchReasons: [`id=${el.id}`],
+              },
+              score: scores,
+              ambiguities: [],
             };
           }
         }
-        return null;
+        return { match: null, score: null, ambiguities: [] };
       },
 
       test(elements: QueryableElement[]): boolean {
@@ -268,11 +284,11 @@ export function compileQuery(query: ElementQuery): CompiledQuery {
       return matchesQuery(element, frozen).matches;
     },
 
-    execute(elements: QueryableElement[]): QueryResult[] {
+    execute(elements: QueryableElement[]): RankedQueryResult[] {
       return executeQuery(elements, frozen);
     },
 
-    first(elements: QueryableElement[]): QueryResult | null {
+    first(elements: QueryableElement[]): FindFirstResult {
       return findFirst(elements, frozen);
     },
 

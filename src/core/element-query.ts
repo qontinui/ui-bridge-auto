@@ -7,6 +7,8 @@
  */
 
 import { isFuzzyMatch } from "./fuzzy-match";
+import type { ScoreBreakdown, RankedResult } from "./query-ranking";
+import { rankResults, computeScoreBreakdown } from "./query-ranking";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -82,6 +84,50 @@ export interface QueryResult {
   label: string | undefined;
   type: string;
   matchReasons: string[];
+}
+
+/**
+ * A query result augmented with a confidence score breakdown.
+ *
+ * Returned by `executeQuery` so callers can surface match confidence and
+ * choose between near-equal candidates. The `score` is the same per-criterion
+ * `ScoreBreakdown` produced by `query-ranking`.
+ */
+export interface RankedQueryResult extends QueryResult {
+  /** Per-criterion score breakdown produced by `computeScoreBreakdown`. */
+  score: ScoreBreakdown;
+}
+
+/** Options for `findFirst` controlling ambiguity reporting. */
+export interface FindFirstOptions {
+  /**
+   * Maximum number of near-miss candidates to include in `ambiguities`.
+   * Defaults to 5.
+   */
+  maxAmbiguities?: number;
+
+  /**
+   * Minimum composite score (0.0-1.0) for a near-miss to be included in
+   * `ambiguities`. Defaults to 0.5.
+   */
+  ambiguityThreshold?: number;
+}
+
+/**
+ * Result of `findFirst`. Surfaces the chosen match alongside the score
+ * breakdown that produced it and any near-miss ambiguities so callers
+ * can decide whether the match was confident.
+ */
+export interface FindFirstResult {
+  /** The chosen match, or `null` if no element matched the query. */
+  match: QueryResult | null;
+  /** Score breakdown for the chosen match (or `null` when there is none). */
+  score: ScoreBreakdown | null;
+  /**
+   * Other matching candidates ranked by descending composite score that
+   * passed `ambiguityThreshold`. Excludes the chosen match.
+   */
+  ambiguities: RankedResult[];
 }
 
 // ---------------------------------------------------------------------------
@@ -342,12 +388,16 @@ export function matchesQuery(
 
 /**
  * Execute a query against a collection of registered elements.
- * Handles cross-element criteria (like `near`) that matchesQuery cannot evaluate alone.
+ *
+ * Handles cross-element criteria (like `near`) that matchesQuery cannot
+ * evaluate alone. Each result carries a `ScoreBreakdown` describing how
+ * each criterion contributed, and the array is sorted by descending
+ * composite score so callers can read the best match first.
  */
 export function executeQuery(
   elements: QueryableElement[],
   query: ElementQuery,
-): QueryResult[] {
+): RankedQueryResult[] {
   // First pass: evaluate single-element criteria
   const candidates: Array<{ el: QueryableElement; reasons: string[] }> = [];
   for (const el of elements) {
@@ -384,12 +434,22 @@ export function executeQuery(
     }
   }
 
-  return results.map(({ el, reasons }) => ({
-    id: el.id,
-    label: el.label,
-    type: el.type,
-    matchReasons: reasons,
-  }));
+  // Augment each match with a ScoreBreakdown and sort by composite score.
+  const ranked = results.map(({ el, reasons }) => {
+    const { score, scores } = computeScoreBreakdown(el, query);
+    return {
+      id: el.id,
+      label: el.label,
+      type: el.type,
+      matchReasons: reasons,
+      score: scores,
+      _composite: score,
+    };
+  });
+
+  ranked.sort((a, b) => b._composite - a._composite);
+
+  return ranked.map(({ _composite: _, ...rest }) => rest);
 }
 
 /** Edge-to-edge distance between two rects (0 if overlapping). */
@@ -404,23 +464,84 @@ function rectDistance(
 
 /**
  * Find the first element matching the query.
- * For queries with cross-element criteria (near), delegates to executeQuery.
+ *
+ * Returns a `FindFirstResult` containing the chosen match, the score
+ * breakdown that produced it, and any near-miss ambiguities. Internally
+ * delegates to `rankResults` so ambiguities come for free; the cross-element
+ * `near` criterion routes through `executeQuery` to preserve its semantics.
+ *
+ * @param elements - Elements to search.
+ * @param query - The query to match against.
+ * @param options - Configuration for ambiguity reporting.
  */
 export function findFirst(
   elements: QueryableElement[],
   query: ElementQuery,
-): QueryResult | null {
+  options?: FindFirstOptions,
+): FindFirstResult {
+  const maxAmbiguities = options?.maxAmbiguities ?? 5;
+  const ambiguityThreshold = options?.ambiguityThreshold ?? 0.5;
+
   if (query.near) {
+    // Cross-element criteria require the executeQuery path.
     const results = executeQuery(elements, query);
-    return results.length > 0 ? results[0] : null;
-  }
-  for (const el of elements) {
-    const { matches, reasons } = matchesQuery(el, query);
-    if (matches) {
-      return { id: el.id, label: el.label, type: el.type, matchReasons: reasons };
+    if (results.length === 0) {
+      return { match: null, score: null, ambiguities: [] };
     }
+    const [chosen, ...rest] = results;
+    const { match, score } = stripScore(chosen);
+    const ambiguities = rest
+      .map((r) => toRankedResult(r, query, elements))
+      .filter((r): r is RankedResult => r !== null && r.score >= ambiguityThreshold)
+      .slice(0, maxAmbiguities);
+    return { match, score, ambiguities };
   }
-  return null;
+
+  const ranked = rankResults(elements, query);
+  if (ranked.length === 0) {
+    return { match: null, score: null, ambiguities: [] };
+  }
+
+  const [chosen, ...rest] = ranked;
+  const match: QueryResult = {
+    id: chosen.id,
+    label: chosen.label,
+    type: chosen.type,
+    matchReasons: chosen.matchReasons,
+  };
+  const ambiguities = rest
+    .filter((r) => r.score >= ambiguityThreshold)
+    .slice(0, maxAmbiguities);
+
+  return { match, score: chosen.scores, ambiguities };
+}
+
+/** Strip the per-criterion score off a `RankedQueryResult` to a bare `QueryResult`. */
+function stripScore(result: RankedQueryResult): {
+  match: QueryResult;
+  score: ScoreBreakdown;
+} {
+  const { score, ...rest } = result;
+  return { match: rest, score };
+}
+
+/** Convert a `RankedQueryResult` (no composite) into a `RankedResult` (with composite). */
+function toRankedResult(
+  result: RankedQueryResult,
+  query: ElementQuery,
+  elements: QueryableElement[],
+): RankedResult | null {
+  const el = elements.find((e) => e.id === result.id);
+  if (!el) return null;
+  const { score } = computeScoreBreakdown(el, query);
+  return {
+    id: result.id,
+    label: result.label,
+    type: result.type,
+    matchReasons: result.matchReasons,
+    score,
+    scores: result.score,
+  };
 }
 
 // ---------------------------------------------------------------------------

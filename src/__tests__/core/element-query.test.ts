@@ -421,17 +421,23 @@ describe("findFirst", () => {
     const btn1 = createButton("First");
     const btn2 = createButton("Second");
 
-    const result = findFirst([btn1, btn2], { tagName: "button" });
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe(btn1.id);
+    const { match } = findFirst([btn1, btn2], { tagName: "button" });
+    expect(match).not.toBeNull();
+    expect(match!.id).toBe(btn1.id);
   });
 
-  it("returns null when no match", () => {
+  it("returns null match when no candidate matches", () => {
     const btn = createButton("Submit");
-    expect(findFirst([btn], { tagName: "select" })).toBeNull();
+    const result = findFirst([btn], { tagName: "select" });
+    expect(result.match).toBeNull();
+    expect(result.score).toBeNull();
+    expect(result.ambiguities).toEqual([]);
   });
 
-  it("returns null for empty list", () => {
-    expect(findFirst([], { text: "anything" })).toBeNull();
+  it("returns null match for empty list", () => {
+    const result = findFirst([], { text: "anything" });
+    expect(result.match).toBeNull();
+    expect(result.score).toBeNull();
+    expect(result.ambiguities).toEqual([]);
   });
 });

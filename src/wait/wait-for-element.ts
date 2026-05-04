@@ -26,7 +26,7 @@ export async function waitForElement(options: WaitForElementOptions): Promise<Qu
     registry.getAllElements() as QueryableElement[],
     query,
   );
-  if (existing) return existing;
+  if (existing.match) return existing.match;
 
   return new Promise<QueryResult>((resolve, reject) => {
     const cleanups: (() => void)[] = [];
@@ -41,9 +41,9 @@ export async function waitForElement(options: WaitForElementOptions): Promise<Qu
         registry.getAllElements() as QueryableElement[],
         query,
       );
-      if (result) {
+      if (result.match) {
         cleanup();
-        resolve(result);
+        resolve(result.match);
       }
     }
 

@@ -362,13 +362,15 @@ export class AutomationEngine {
   findElement(query: ElementQuery): QueryResult | null {
     const elements = this.registry.getAllElements();
     const results = executeQuery(elements, query);
-    return results.length > 0 ? results[0] : null;
+    if (results.length === 0) return null;
+    const { score: _score, ...result } = results[0];
+    return result;
   }
 
   /** Find all elements matching the query. */
   findAllElements(query: ElementQuery): QueryResult[] {
     const elements = this.registry.getAllElements();
-    return executeQuery(elements, query);
+    return executeQuery(elements, query).map(({ score: _score, ...rest }) => rest);
   }
 
   // -----------------------------------------------------------------------
@@ -487,10 +489,10 @@ export class AutomationEngine {
     if (this.highlightManager && this.enableHighlights) {
       for (const step of steps) {
         const elements = this.registry.getAllElements();
-        const found = findFirst(elements, step.target);
-        if (found) {
+        const { match } = findFirst(elements, step.target);
+        if (match) {
           this.highlightManager.highlightAction(
-            found.id,
+            match.id,
             step.action as ActionType,
             this.registry,
           );
