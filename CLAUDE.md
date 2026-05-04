@@ -95,11 +95,64 @@ The canonical SDK + IR pipeline reference is `knowledge-base/qontinui-specific/u
 ## Building & Testing
 
 ```bash
-npm run typecheck    # Type-check
-npm run test         # Run tests (vitest + jsdom)
-npm run test:watch   # Watch mode
-npm run build        # Build CJS + ESM + DTS
+npm run typecheck         # Type-check
+npm run test              # Run tests (vitest + jsdom)
+npm run test:watch        # Watch mode
+npm run build             # Build CJS + ESM + DTS
+npm run verify-published  # Spot-check the registry artifact (see Publishing)
 ```
+
+## Publishing
+
+`v*` tag push fires `.github/workflows/publish.yml`, which runs
+`npm ci → npm run build → npm publish` on `ubuntu-latest`. To release:
+
+1. Bump `version` in `package.json` and commit on `master`.
+2. `git push origin master` so the release commit is on the remote
+   (publish workflow builds from the tag, but the release commit must
+   be reachable on `master` so future publishes diff cleanly).
+3. `git tag v<version> && git push origin v<version>` — the workflow
+   fires on tag push.
+4. **After the workflow completes**, wait ~30s for the registry index
+   to update, then run the post-publish spot-check:
+
+   ```bash
+   npm run verify-published                  # latest
+   node scripts/verify-published.js 0.1.5    # or the specific version
+   ```
+
+### The post-publish spot-check (don't skip — it's not the same as the consumer spot-check)
+
+`npm run verify-published` exercises the *registry artifact* in a clean
+temp directory. The legacy "consumer spot-check" pattern — `pnpm install`
++ `pnpm run typecheck` in `qontinui-runner` / `qontinui-web/frontend`
+— is **tautological** under the dev-link overlay: both consumers'
+`node_modules/@qontinui/ui-bridge-auto` is a symlink to this local
+directory (created by `qontinui-claude-config/scripts/dev-link.ps1`), so
+the typecheck never touches the published tarball. See
+`_dev-notes-main/consumer-spot-check-against-published-npm/` for the
+full incident write-up.
+
+If you still want to confirm the on-machine consumer state during a
+publish session, this snippet detects the dev-link overlay:
+
+```powershell
+# In qontinui-runner or qontinui-web/frontend:
+$entry = Get-Item -Path "node_modules/@qontinui/ui-bridge-auto" -Force
+if ($entry.LinkType -eq "SymbolicLink") {
+    Write-Host "DEV-LINK ACTIVE — symlink target: $($entry.Target)"
+    Write-Host "→ Skip the consumer typecheck; rely on `npm run verify-published` instead."
+}
+```
+
+```bash
+# POSIX equivalent
+target=$(readlink node_modules/@qontinui/ui-bridge-auto 2>/dev/null)
+[ -n "$target" ] && echo "DEV-LINK ACTIVE — target: $target"
+```
+
+Paste these into future publish-session SESSION_PROMPTs in place of the
+old "step 6: pnpm install + typecheck in qontinui-runner" instruction.
 
 ## Dependencies
 
