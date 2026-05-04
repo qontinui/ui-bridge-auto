@@ -1,0 +1,37 @@
+name: Publish to npm
+
+# Tag-triggered publishing for @qontinui/ui-bridge-auto.
+#
+# To release:
+#   1. Bump `version` in package.json + commit on master.
+#   2. `git push origin master` so the release commit is on the remote.
+#   3. `git tag v<version> && git push origin v<version>` — this workflow
+#      fires on tag push and runs npm ci → npm run build → npm publish.
+#
+# Requires `NPM_TOKEN` configured at the org or repo secret level.
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
