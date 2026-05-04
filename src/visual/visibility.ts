@@ -321,7 +321,6 @@ function paintsAbove(a: HTMLElement, b: HTMLElement): boolean {
   if (za !== zb) return za > zb;
   // Equal z-index → DOM order. `compareDocumentPosition` returns a bitmask;
   // `DOCUMENT_POSITION_FOLLOWING` is set when `a` follows `b`.
-  // eslint-disable-next-line no-bitwise
   return (b.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 }
 

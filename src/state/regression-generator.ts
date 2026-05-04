@@ -575,6 +575,7 @@ export function deserializeSuite(json: string): RegressionSuite {
   } catch (err) {
     throw new Error(
       `deserializeSuite: invalid JSON — ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     );
   }
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {

@@ -14,7 +14,7 @@
  * @vitest-environment jsdom
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   adaptIRDocumentToWorkflowConfig,
   adaptIRState,
@@ -39,7 +39,6 @@ import type { StateDefinition, TransitionDefinition } from "../state/state-machi
 // removes one from `AdaptedState`), this stops compiling.
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function _typeWitnesses(s: AdaptedState, t: AdaptedTransition): {
   state: StateDefinition;
   transition: TransitionDefinition;
