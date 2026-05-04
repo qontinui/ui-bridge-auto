@@ -171,6 +171,13 @@ export interface AssertionOverlayContext {
   transition: IRTransition;
   /** The namespace forwarded from `GeneratorOptions.baselineNamespace`. */
   baselineNamespace?: string;
+  /**
+   * Pre-computed `stateId -> IRState` lookup, built once per
+   * `generateRegressionSuite` call and shared across every case + overlay.
+   * Overlays should read from this rather than rebuilding their own index;
+   * the map is treated as read-only and must not be mutated.
+   */
+  stateById: ReadonlyMap<string, IRDocument["states"][number]>;
 }
 
 /**
@@ -343,10 +350,9 @@ export function deriveBaselineKey(
 
 /** Build the (a) source-state predicates for one case. */
 function buildPreStateAssertions(
-  ir: IRDocument,
   transition: IRTransition,
+  stateById: ReadonlyMap<string, IRDocument["states"][number]>,
 ): StateActiveAssertion[] {
-  const stateById = indexStatesById(ir);
   const out: StateActiveAssertion[] = [];
   for (const stateId of sortedCopy(transition.fromStates)) {
     const state = stateById.get(stateId);
@@ -365,10 +371,9 @@ function buildPreStateAssertions(
 
 /** Build the (b) target-state predicates for one case. */
 function buildPostStateAssertions(
-  ir: IRDocument,
   transition: IRTransition,
+  stateById: ReadonlyMap<string, IRDocument["states"][number]>,
 ): StateActiveAssertion[] {
-  const stateById = indexStatesById(ir);
   const out: StateActiveAssertion[] = [];
   for (const stateId of sortedCopy(transition.activateStates)) {
     const state = stateById.get(stateId);
@@ -422,9 +427,9 @@ function buildVisualGateAssertions(
 }
 
 /**
- * Index IR states by id. Computed once per case for clarity; the work is
- * trivially cheap (a few hundred entries at most in realistic IRs) and
- * keeping it local means the helpers stay pure functions of their inputs.
+ * Index IR states by id. Built once per `generateRegressionSuite` call and
+ * threaded through every case/overlay via `AssertionOverlayContext.stateById`,
+ * so overlays don't rebuild their own copies per transition.
  */
 function indexStatesById(ir: IRDocument): Map<string, IRDocument["states"][number]> {
   const m = new Map<string, IRDocument["states"][number]>();
@@ -463,10 +468,11 @@ function buildCase(
   ir: IRDocument,
   transition: IRTransition,
   opts: GeneratorOptions,
+  stateById: ReadonlyMap<string, IRDocument["states"][number]>,
 ): RegressionCase {
   const builtIn: RegressionAssertion[] = [
-    ...buildPreStateAssertions(ir, transition),
-    ...buildPostStateAssertions(ir, transition),
+    ...buildPreStateAssertions(transition, stateById),
+    ...buildPostStateAssertions(transition, stateById),
     ...buildActionTargetAssertions(transition),
     ...buildVisualGateAssertions(ir, transition, opts),
   ];
@@ -490,6 +496,7 @@ function buildCase(
       case: partial,
       transition,
       baselineNamespace: opts.baselineNamespace,
+      stateById,
     });
     for (const a of extra) partial.assertions.push(a);
   }
@@ -520,8 +527,13 @@ export function generateRegressionSuite(
   // Sort transitions defensively — callers may build IRs in arbitrary order
   // (e.g., insertion order of a Map). We never trust the caller's order.
   const sortedTransitions = [...ir.transitions].sort(byId);
+  // Build the stateId -> IRState index ONCE per suite and thread it through
+  // every case + overlay via AssertionOverlayContext.stateById, so each
+  // overlay's `apply` is O(states-it-touches) rather than O(|states|) in
+  // map construction.
+  const stateById = indexStatesById(ir);
   const cases: RegressionCase[] = sortedTransitions.map((t) =>
-    buildCase(ir, t, opts),
+    buildCase(ir, t, opts, stateById),
   );
 
   return {
@@ -584,6 +596,10 @@ export function deserializeSuite(json: string): RegressionSuite {
   if (typeof irObj.id !== "string") {
     throw new Error("deserializeSuite: missing or non-string `ir.id`");
   }
+  // TODO(IRVersion): hardcoded "1.0" must be updated when `IRVersion` widens
+  // (e.g. "1.1"). Better long-term: replace with a type guard exported from
+  // `@qontinui/shared-types/ui-bridge-ir` (e.g. `isSupportedIRVersion`) so
+  // every supported literal is accepted automatically.
   if (irObj.version !== "1.0") {
     throw new Error(
       `deserializeSuite: unsupported \`ir.version\` — expected "1.0", got ${JSON.stringify(irObj.version)}`,
