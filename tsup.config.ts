@@ -5,6 +5,16 @@ import { defineConfig } from "tsup";
 // This is the tsup-side half of the Phase 3 Item 8 guard — the other half
 // is the `test -s dist/index.d.ts` post-check in the npm script.
 //
+// All four configs use `clean: false`. dist cleanup runs once via the
+// `node -e "fs.rmSync(...)"` prelude in `package.json`'s `build` script
+// BEFORE tsup is invoked. We do NOT use tsup's `clean: true` on any config
+// because tsup runs DTS workers in parallel across configs, and the
+// per-config clean races against sibling configs' DTS writes — config #1's
+// late-finishing DTS clean was wiping `dist/ir-builder/index.d.{ts,mts}`
+// after config #3 had already written them. See
+// `_dev-notes-main/ui-bridge-auto-ir-builder-dts-missing/SESSION_PROMPT.md`
+// for the full diagnostic trail (status: SHIPPED).
+//
 // Four logical bundles are emitted:
 //   1. Library entries — the root `src/index.ts` plus per-subpath barrels
 //      (`types`, `drift`, `regression`, `diagnosis`, `visual`, `runtime`).
@@ -39,7 +49,7 @@ export default defineConfig([
     },
     format: ["cjs", "esm"],
     dts: { resolve: true },
-    clean: true,
+    clean: false,
     sourcemap: true,
     external: [
       "@qontinui/ui-bridge",

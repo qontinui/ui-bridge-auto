@@ -1,5 +1,24 @@
 # ui-bridge-auto/scripts
 
+## check-dts-completeness.js
+
+Build post-check: walks `package.json#exports`, confirms every subpath's
+declared `types` entry exists and is non-empty in `dist/`. Exits 1 on
+the first missing or empty `.d.ts` / `.d.mts`.
+
+```bash
+node scripts/check-dts-completeness.js
+```
+
+Wired into `npm run build` after `tsup`. Catches the class of bug where
+tsup announces dts files in its build log but they don't actually make
+it to disk (see the ir-builder regression in 0.1.4). The npm-script half
+of the Phase 3 Item 8 guard — the tsup-side half is `dts: { resolve: true }`
+in `tsup.config.ts`.
+
+If a subpath is intentionally runtime-only, drop its `types` entries
+from `package.json#exports` rather than suppress the check.
+
 ## verify-published.js
 
 Spot-checks that a version of `@qontinui/ui-bridge-auto` on the npm
