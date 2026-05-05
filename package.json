@@ -2,6 +2,14 @@
   "name": "@qontinui/ui-bridge-auto",
   "version": "0.1.5",
   "description": "DOM-based model-based automation library for the UI Bridge SDK",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qontinui/ui-bridge-auto.git"
+  },
+  "homepage": "https://github.com/qontinui/ui-bridge-auto#readme",
+  "bugs": {
+    "url": "https://github.com/qontinui/ui-bridge-auto/issues"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
