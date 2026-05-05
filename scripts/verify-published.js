@@ -49,12 +49,7 @@ const SUBPATHS = [
     { path: "./diagnosis",  symbol: "diagnose",                kind: "value"     },
     { path: "./visual",     symbol: "checkDesignTokens",       kind: "value"     },
     { path: "./runtime",    symbol: "findFirst",               kind: "value"     },
-    // ./ir-builder ships JS only — `dist/ir-builder/index.d.{ts,mts}` is
-    // missing from 0.1.4 (likely tsup's dts resolver silently dropping
-    // output because of the `ts-morph` external). Verified at runtime;
-    // skipped from the typecheck stub. Drop `runtimeOnly` once a future
-    // ui-bridge-auto release ships `./ir-builder` .d.ts files.
-    { path: "./ir-builder", symbol: "buildIR",                 kind: "value", runtimeOnly: true },
+    { path: "./ir-builder", symbol: "buildProjectIR",          kind: "value"     },
 ];
 
 function importTarget(p) {
