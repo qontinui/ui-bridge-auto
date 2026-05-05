@@ -1,14 +1,22 @@
 name: Publish to npm
 
-# Tag-triggered publishing for @qontinui/ui-bridge-auto.
+# Tag-triggered publishing for @qontinui/ui-bridge-auto via npm
+# Trusted Publishing (OIDC). No long-lived NPM_TOKEN secret — GitHub
+# mints a short-lived OIDC JWT that npm verifies against the per-package
+# trust policy configured at npmjs.com. Mirrors the pattern in
+# qontinui/ui-bridge's publish.yml.
 #
 # To release:
 #   1. Bump `version` in package.json + commit on master.
 #   2. `git push origin master` so the release commit is on the remote.
 #   3. `git tag v<version> && git push origin v<version>` — this workflow
-#      fires on tag push and runs npm ci → npm run build → npm publish.
+#      fires on tag push and runs npm ci → npm run build → npm publish
+#      with --provenance.
 #
-# Requires `NPM_TOKEN` configured at the org or repo secret level.
+# One-time npmjs.com setup (per package, by an @qontinui maintainer):
+#   npmjs.com → @qontinui/ui-bridge-auto → Settings → Trusted Publisher →
+#   Add: organization=qontinui, repository=ui-bridge-auto,
+#        workflow filename=publish.yml, environment=(blank).
 on:
   push:
     tags:
@@ -17,6 +25,12 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      # Required for npm trusted publishing — GitHub mints a short-lived
+      # OIDC JWT that npm verifies against the per-package trust policy
+      # configured at npmjs.com. No long-lived NPM_TOKEN secret needed.
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -25,6 +39,13 @@ jobs:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Upgrade npm to 11.5.1+ for trusted publishing
+        # actions/setup-node@v4 with node@20 ships npm@10.8.2, but npm
+        # Trusted Publishers requires 11.5.1+. Without this, the publish
+        # step sends an empty auth header and gets 404 even when the
+        # OIDC + provenance flow succeeds.
+        run: npm install --global npm@latest
+
       - name: Install dependencies
         run: npm ci
 
@@ -32,6 +53,7 @@ jobs:
         run: npm run build
 
       - name: Publish
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # --provenance generates an attestation linking the npm tarball
+        # back to this exact commit + workflow run, signed by the OIDC
+        # token. Surfaces on the package's npm page under "Provenance".
+        run: npm publish --access public --provenance
