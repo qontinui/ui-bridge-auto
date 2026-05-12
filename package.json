@@ -1,6 +1,6 @@
 {
   "name": "@qontinui/ui-bridge-auto",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "DOM-based model-based automation library for the UI Bridge SDK",
   "repository": {
     "type": "git",
