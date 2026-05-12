@@ -55,8 +55,13 @@ export async function performType(element: HTMLElement, params?: TypeParams): Pr
   if (typeof params?.text !== "string") {
     const hasValueAlias =
       paramsRecord != null && typeof paramsRecord["value"] === "string";
+    // The previous error tip cross-recommended `setValue`/`select`, which
+    // misled callers when the target element didn't allow those actions
+    // (e.g. textareas advertise `type`/`focus`/`blur`/`clear`/`click` but
+    // not `setValue`). The remaining "Got `value` — `type` expects `text`"
+    // half is the actionable part — keep that, drop the speculative tip.
     const hint = hasValueAlias
-      ? " Got `value` — the `type` action expects `text` instead. (Tip: `select`/`setValue` use `value`, but `type` uses `text`.)"
+      ? " Got `value` — the `type` action expects `text` instead."
       : "";
     throw new Error(
       `Type action requires a 'text' string parameter (the characters to type into the field).${hint}`,

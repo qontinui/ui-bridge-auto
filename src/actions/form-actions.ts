@@ -322,8 +322,12 @@ export function performSetValue(element: HTMLElement, params?: { value: string }
     const paramsRecord = params as unknown as Record<string, unknown> | undefined;
     const hasTextAlias =
       paramsRecord != null && typeof paramsRecord["text"] === "string";
+    // Symmetric with `performType`: drop the cross-action tip — it
+    // misleads when the target element doesn't allow the suggested
+    // sibling action. The "Got `text` — expects `value`" half is the
+    // actionable signal; that's all we keep.
     const hint = hasTextAlias
-      ? " Got `text` — `setValue` expects `value` instead. (Tip: `type` uses `text`, but `setValue`/`select` use `value`.)"
+      ? " Got `text` — `setValue` expects `value` instead."
       : "";
     throw new Error(`setValue requires a 'value' parameter.${hint}`);
   }
