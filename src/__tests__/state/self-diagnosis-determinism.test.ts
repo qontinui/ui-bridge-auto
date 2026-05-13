@@ -30,6 +30,7 @@ import type {
   RecordingSession,
 } from "../../recording/session-recorder";
 import type { FragilityScore } from "../../counterfactual/types";
+import { makeTestAssertion } from "../test-helpers";
 
 // ---------------------------------------------------------------------------
 // Constants — fixed timestamps + ids. NEVER derived from Date.now() / random.
@@ -74,13 +75,16 @@ function buildIR(): IRDocument {
       {
         id: "state-A",
         name: "State A",
-        requiredElements: [{ id: "el-0" }, { id: "el-1" }],
+        assertions: [
+          makeTestAssertion("state-A", 0, { id: "el-0" }),
+          makeTestAssertion("state-A", 1, { id: "el-1" }),
+        ],
         provenance: { source: "build-plugin", file: "src/a.tsx" },
       },
       {
         id: "state-B",
         name: "State B",
-        requiredElements: [{ id: "el-0" }],
+        assertions: [makeTestAssertion("state-B", 0, { id: "el-0" })],
         provenance: { source: "build-plugin", file: "src/b.tsx" },
       },
     ],

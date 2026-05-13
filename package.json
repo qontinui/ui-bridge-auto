@@ -119,7 +119,7 @@
     "verify-published": "node scripts/verify-published.js"
   },
   "dependencies": {
-    "@qontinui/shared-types": "^0.2.1",
+    "@qontinui/shared-types": "^0.2.5",
     "@qontinui/ui-bridge": "^0.3.2",
     "ts-morph": "^27.0.2"
   },

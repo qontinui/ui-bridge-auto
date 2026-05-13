@@ -37,10 +37,10 @@ import { stableStringifyValue } from "./canonical-json";
 
 /**
  * Asserts that a given state is active. References the IR state by id and
- * carries the indices (into `state.requiredElements`) the executor must
+ * carries the indices (into `state.assertions`) the executor must
  * resolve. Indices are emitted ascending; the executor dereferences each
- * index against the live IR to recover the actual `IRElementCriteria` —
- * keeping the suite in lock-step with the IR.
+ * index against the live IR to recover the actual assertion's
+ * `target.criteria` — keeping the suite in lock-step with the IR.
  */
 export interface StateActiveAssertion {
   kind: "state-active";
@@ -48,7 +48,7 @@ export interface StateActiveAssertion {
   phase: "pre" | "post";
   /** IR state id (matches `IRState.id`). */
   stateId: string;
-  /** Indices into `IRState.requiredElements`, sorted ascending. */
+  /** Indices into `IRState.assertions`, sorted ascending. */
   requiredElementIds: number[];
 }
 
@@ -356,7 +356,7 @@ function buildPreStateAssertions(
   const out: StateActiveAssertion[] = [];
   for (const stateId of sortedCopy(transition.fromStates)) {
     const state = stateById.get(stateId);
-    const len = state?.requiredElements.length ?? 0;
+    const len = state?.assertions.length ?? 0;
     const indices: number[] = [];
     for (let i = 0; i < len; i++) indices.push(i);
     out.push({
@@ -377,7 +377,7 @@ function buildPostStateAssertions(
   const out: StateActiveAssertion[] = [];
   for (const stateId of sortedCopy(transition.activateStates)) {
     const state = stateById.get(stateId);
-    const len = state?.requiredElements.length ?? 0;
+    const len = state?.assertions.length ?? 0;
     const indices: number[] = [];
     for (let i = 0; i < len; i++) indices.push(i);
     out.push({

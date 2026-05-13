@@ -25,6 +25,7 @@ import {
   type AssertionExecution,
 } from "../../state/coverage-diff";
 import { canonicalJSON } from "../../state/canonical-json";
+import { makeTestAssertion } from "../test-helpers";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -38,11 +39,11 @@ const FIXED_TS = "2026-01-01T00:00:00.000Z";
 // ---------------------------------------------------------------------------
 
 function mkState(id: string, requiredCount: number): IRState {
-  const requiredElements = [];
+  const assertions = [];
   for (let i = 0; i < requiredCount; i++) {
-    requiredElements.push({ id: `${id}-el-${i}` });
+    assertions.push(makeTestAssertion(id, i, { id: `${id}-el-${i}` }));
   }
-  return { id, name: id, requiredElements };
+  return { id, name: id, assertions };
 }
 
 function mkAction(

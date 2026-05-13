@@ -141,11 +141,14 @@ function compareStates(
   }
 
   // shape-mismatch on requiredElements length when both sides agree on id.
+  // The IR side now stores predicates as `assertions[]` (each assertion's
+  // `target.criteria` corresponds to one legacy required element); the
+  // runtime snapshot still exposes the flat `requiredElements` shape.
   for (const ir of irStates) {
     const rt = runtimeById.get(ir.id);
     if (!rt) continue;
     if (!Array.isArray(rt.requiredElements)) continue;
-    const irLen = ir.requiredElements?.length ?? 0;
+    const irLen = ir.assertions?.length ?? 0;
     const rtLen = rt.requiredElements.length;
     if (irLen !== rtLen) {
       out.push({

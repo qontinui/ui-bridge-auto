@@ -21,17 +21,18 @@ import {
   type ScenarioProjection,
 } from "../../state/scenario-projection";
 import { MockRegistry, createMockElement, resetIdCounter } from "../../test-utils";
+import { makeTestAssertion } from "../test-helpers";
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
 function mkState(id: string, requiredCount: number, name = id): IRState {
-  const requiredElements = [];
+  const assertions = [];
   for (let i = 0; i < requiredCount; i++) {
-    requiredElements.push({ id: `${id}-el-${i}` });
+    assertions.push(makeTestAssertion(id, i, { id: `${id}-el-${i}` }));
   }
-  return { id, name, requiredElements };
+  return { id, name, assertions };
 }
 
 function mkAction(
@@ -115,7 +116,7 @@ describe("projectScenarios", () => {
     expect(proj.states.map((s) => s.stateId)).toEqual(["a", "b", "c"]);
   });
 
-  it("populates requiredElementCount from IRState.requiredElements.length", () => {
+  it("populates requiredElementCount from IRState.assertions.length", () => {
     const proj = projectScenarios(makeFixtureIR());
     const byId = new Map(proj.states.map((s) => [s.stateId, s]));
     expect(byId.get("a")?.requiredElementCount).toBe(2);

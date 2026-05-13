@@ -74,13 +74,13 @@ function buildIR(): IRDocument {
       {
         id: "state-A",
         name: "State A",
-        requiredElements: [],
+        assertions: [],
         provenance: { source: "build-plugin", file: "src/a.tsx" },
       },
       {
         id: "state-B",
         name: "State B",
-        requiredElements: [],
+        assertions: [],
         provenance: { source: "build-plugin", file: "src/b.tsx" },
       },
     ],

@@ -17,6 +17,7 @@ import {
   type DriftReport,
   type RuntimeSnapshot,
 } from "../drift";
+import { makeTestAssertion } from "../../__tests__/test-helpers";
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -26,7 +27,7 @@ function makeState(id: string, overrides: Partial<IRState> = {}): IRState {
   return {
     id,
     name: id,
-    requiredElements: [],
+    assertions: [],
     ...overrides,
   };
 }
@@ -102,9 +103,9 @@ describe("compareSpecToRuntime", () => {
   it("flags shape-mismatch when state requiredElements length differs", () => {
     const doc = makeDoc([
       makeState("settings", {
-        requiredElements: [
-          { role: "heading", text: "Settings" },
-          { role: "button", text: "Save" },
+        assertions: [
+          makeTestAssertion("settings", 0, { role: "heading", text: "Settings" }),
+          makeTestAssertion("settings", 1, { role: "button", text: "Save" }),
         ],
       }),
     ]);
@@ -126,7 +127,10 @@ describe("compareSpecToRuntime", () => {
   it("does not raise a state shape-mismatch when the runtime omits requiredElements", () => {
     const doc = makeDoc([
       makeState("a", {
-        requiredElements: [{ role: "heading" }, { role: "button" }],
+        assertions: [
+          makeTestAssertion("a", 0, { role: "heading" }),
+          makeTestAssertion("a", 1, { role: "button" }),
+        ],
       }),
     ]);
     const runtime: RuntimeSnapshot = {
@@ -306,7 +310,10 @@ describe("compareSpecToRuntime", () => {
       [
         makeState("a"),
         makeState("b", {
-          requiredElements: [{ role: "x" }, { role: "y" }],
+          assertions: [
+            makeTestAssertion("b", 0, { role: "x" }),
+            makeTestAssertion("b", 1, { role: "y" }),
+          ],
         }),
       ],
       [

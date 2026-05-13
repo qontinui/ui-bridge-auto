@@ -33,6 +33,7 @@ import type {
   RecordingSession,
 } from "../../recording/session-recorder";
 import type { FragilityScore } from "../../counterfactual/types";
+import { makeTestAssertion } from "../test-helpers";
 
 // ---------------------------------------------------------------------------
 // Fixed clocks / ids — never derived from Date.now() / random.
@@ -75,13 +76,16 @@ function buildIR(): IRDocument {
       {
         id: "state-A",
         name: "A",
-        requiredElements: [{ id: "el-0" }, { id: "el-1" }],
+        assertions: [
+          makeTestAssertion("state-A", 0, { id: "el-0" }),
+          makeTestAssertion("state-A", 1, { id: "el-1" }),
+        ],
         provenance: { source: "build-plugin", file: "src/a.tsx" },
       },
       {
         id: "state-B",
         name: "B",
-        requiredElements: [{ id: "el-0" }],
+        assertions: [makeTestAssertion("state-B", 0, { id: "el-0" })],
         provenance: { source: "build-plugin", file: "src/b.tsx" },
       },
     ],
@@ -413,7 +417,10 @@ describe("failureToDivergence — adapter", () => {
         {
           id: "state-A",
           name: "A",
-          requiredElements: [{ id: "e0" }, { id: "e1" }],
+          assertions: [
+            makeTestAssertion("state-A", 0, { id: "e0" }),
+            makeTestAssertion("state-A", 1, { id: "e1" }),
+          ],
         },
       ],
       transitions: [],

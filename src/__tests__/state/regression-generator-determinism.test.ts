@@ -29,6 +29,7 @@ import {
   crossCheckOverlay,
 } from "../../state/regression-overlays";
 import type { DesignTokenRegistry } from "../../visual/token-check";
+import { makeTestAssertion } from "../test-helpers";
 
 // ---------------------------------------------------------------------------
 // Constants — RUNS, fixed strings. Never derived from Date.now() / random.
@@ -42,11 +43,11 @@ const RUNS = 10;
 // ---------------------------------------------------------------------------
 
 function mkState(id: string, requiredCount: number, name = id): IRState {
-  const requiredElements = [];
+  const assertions = [];
   for (let i = 0; i < requiredCount; i++) {
-    requiredElements.push({ id: `${id}-el-${i}` });
+    assertions.push(makeTestAssertion(id, i, { id: `${id}-el-${i}` }));
   }
-  return { id, name, requiredElements };
+  return { id, name, assertions };
 }
 
 function mkAction(

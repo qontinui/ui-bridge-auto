@@ -59,7 +59,7 @@ function buildIR(): IRDocument {
       {
         id: "submit-form-state",
         name: "Submit Form",
-        requiredElements: [],
+        assertions: [],
         provenance: {
           source: "build-plugin",
           file: "src/forms/submit-form.tsx",

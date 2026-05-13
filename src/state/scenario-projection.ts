@@ -64,7 +64,7 @@ export interface ProjectedTransition {
 }
 
 /**
- * One projected state. `requiredElementCount` is `IRState.requiredElements.length`
+ * One projected state. `requiredElementCount` is `IRState.assertions.length`
  * — useful for clients that want to surface "this state has N required
  * elements" without touching the IR.
  */
@@ -261,7 +261,7 @@ export function projectScenarios(ir: IRDocument): ScenarioProjection {
 
     const out: ProjectedState = {
       stateId: s.id,
-      requiredElementCount: s.requiredElements.length,
+      requiredElementCount: s.assertions.length,
       outboundTransitions: projected,
     };
     if (typeof s.name === "string" && s.name !== "" && s.name !== s.id) {
@@ -402,7 +402,13 @@ export function projectCurrentScenario(
   // active. Sorted output for stability.
   const currentStateIds: string[] = [];
   for (const s of [...ir.states].sort((a, b) => byString(a.id, b.id))) {
-    if (isStateCurrentlyActive(s.requiredElements, elements)) {
+    // Extract each assertion's criteria as IRElementCriteria — the IR-side
+    // `assertions[].target.criteria` is the canonical source of the
+    // "required element" predicate now that `requiredElements` is gone.
+    const required = s.assertions.map(
+      (a) => a.target.criteria as IRElementCriteria,
+    );
+    if (isStateCurrentlyActive(required, elements)) {
       currentStateIds.push(s.id);
     }
   }

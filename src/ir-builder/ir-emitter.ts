@@ -12,6 +12,7 @@
  */
 
 import type {
+  IRAssertion,
   IRDocument,
   IRElementCriteria,
   IRMetadata,
@@ -225,10 +226,18 @@ function shapeState(
   const isTerminal = readOptionalBoolProp(decl, "isTerminal", warnings);
   const metadata = readMetadata(decl, warnings);
 
+  // Lift the extracted criteria list into the IR's canonical `assertions`
+  // shape. Each criterion becomes one synthesized assertion whose
+  // `target.criteria` carries the original predicate verbatim — preserving
+  // the round-trip property the projection helpers rely on.
+  const assertions: IRAssertion[] = requiredElements.map(
+    (criteria, idx) => criteriaToAssertion(id, idx, criteria),
+  );
+
   const state: IRState = {
     id,
     name,
-    requiredElements,
+    assertions,
     description,
     excludedElements,
     blocking,
@@ -240,6 +249,32 @@ function shapeState(
     provenance: makeProvenance(decl, source, pluginVersion),
   };
   return stripUndefined(state);
+}
+
+/**
+ * Lift a single `IRElementCriteria` into the canonical `IRAssertion` shape.
+ * The id is derived from `(stateId, idx)` so the emitter stays deterministic.
+ */
+function criteriaToAssertion(
+  stateId: string,
+  idx: number,
+  criteria: IRElementCriteria,
+): IRAssertion {
+  return {
+    id: `${stateId}-elem-${idx}`,
+    description: `Required element ${idx}`,
+    category: "element-presence",
+    severity: "critical",
+    assertionType: "exists",
+    target: {
+      type: "search",
+      criteria: criteria as unknown as Record<string, unknown>,
+      label: `Required element ${idx}`,
+    },
+    source: "build-plugin",
+    reviewed: false,
+    enabled: true,
+  };
 }
 
 // ---------------------------------------------------------------------------

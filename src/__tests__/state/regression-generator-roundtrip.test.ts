@@ -3,7 +3,7 @@
  * (Section 9, Phase 3).
  *
  * Builds a small but feature-rich IR (3 states, 4 transitions, with
- * provenance, requiredElements, conditions, and action targets carrying
+ * provenance, assertions, conditions, and action targets carrying
  * text/role/attributes), generates a suite with all three built-in
  * overlays + a `baselineStore` + a `baselineNamespace`, then asserts:
  *   1. `serializeSuite -> deserializeSuite -> serializeSuite` is byte-identical.
@@ -38,6 +38,7 @@ import {
   crossCheckOverlay,
 } from "../../state/regression-overlays";
 import type { DesignTokenRegistry } from "../../visual/token-check";
+import { makeTestAssertion } from "../test-helpers";
 
 // ---------------------------------------------------------------------------
 // Fixture
@@ -49,14 +50,14 @@ function mkState(
   name = id,
   extras?: Partial<IRState>,
 ): IRState {
-  const requiredElements = [];
+  const assertions = [];
   for (let i = 0; i < requiredCount; i++) {
-    requiredElements.push({ id: `${id}-el-${i}` });
+    assertions.push(makeTestAssertion(id, i, { id: `${id}-el-${i}` }));
   }
   return {
     id,
     name,
-    requiredElements,
+    assertions,
     provenance: { source: "build-plugin", file: `src/${id}.tsx` },
     ...extras,
   };
@@ -280,11 +281,11 @@ describe("generateRegressionSuite — round-trip integration", () => {
         overlayAsserts.map((a) => (a as { overlayId: string }).overlayId),
       );
 
-      // visibility + token: one per (activateState x state.requiredElements).
+      // visibility + token: one per (activateState x state.assertions).
       let expectedVisCount = 0;
       for (const sid of t.activateStates) {
         const s = stateById.get(sid);
-        expectedVisCount += s?.requiredElements.length ?? 0;
+        expectedVisCount += s?.assertions.length ?? 0;
       }
       const visCount = overlayAsserts.filter(
         (a) => (a as { overlayId: string }).overlayId === "visibility",

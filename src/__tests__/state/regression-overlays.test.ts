@@ -21,17 +21,18 @@ import {
   crossCheckOverlay,
 } from "../../state/regression-overlays";
 import type { DesignTokenRegistry } from "../../visual/token-check";
+import { makeTestAssertion } from "../test-helpers";
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
 function mkState(id: string, requiredCount: number, name = id): IRState {
-  const requiredElements = [];
+  const assertions = [];
   for (let i = 0; i < requiredCount; i++) {
-    requiredElements.push({ id: `${id}-el-${i}` });
+    assertions.push(makeTestAssertion(id, i, { id: `${id}-el-${i}` }));
   }
-  return { id, name, requiredElements };
+  return { id, name, assertions };
 }
 
 function mkAction(
@@ -156,7 +157,7 @@ describe("visibilityOverlay", () => {
     });
   });
 
-  it("emits zero assertions when activateState has zero requiredElements", () => {
+  it("emits zero assertions when activateState has zero assertions", () => {
     const ir = makeFixtureIR();
     const overlay = visibilityOverlay();
     // t-a-to-c activates "c"; "c" has 0 required elements → 0 assertions.
@@ -258,7 +259,7 @@ describe("tokenOverlay", () => {
     expect(payloads[1]!.requiredElementIndex).toBe(1);
   });
 
-  it("emits zero assertions when activateState has zero requiredElements", () => {
+  it("emits zero assertions when activateState has zero assertions", () => {
     const ir = makeFixtureIR();
     const overlay = tokenOverlay(makeStubRegistry());
     const out = overlay.apply(ctxFor(ir, "t-a-to-c"));

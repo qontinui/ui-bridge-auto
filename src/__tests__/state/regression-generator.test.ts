@@ -18,6 +18,7 @@ import {
   type AssertionOverlay,
   type GeneratorOptions,
 } from "../../state/regression-generator";
+import { makeTestAssertion } from "../test-helpers";
 
 // ---------------------------------------------------------------------------
 // Fixtures — small IR with 3 states + 4 transitions, intentionally authored
@@ -25,11 +26,11 @@ import {
 // ---------------------------------------------------------------------------
 
 function mkState(id: string, requiredCount: number, name = id): IRState {
-  const requiredElements = [];
+  const assertions = [];
   for (let i = 0; i < requiredCount; i++) {
-    requiredElements.push({ id: `${id}-el-${i}` });
+    assertions.push(makeTestAssertion(id, i, { id: `${id}-el-${i}` }));
   }
-  return { id, name, requiredElements };
+  return { id, name, assertions };
 }
 
 function mkTransition(

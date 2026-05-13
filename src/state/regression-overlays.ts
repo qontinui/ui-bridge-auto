@@ -96,7 +96,7 @@ export interface VisibilityOverlayOptions {
  * Build a `visibility` overlay.
  *
  * For each post-state in `ctx.case.activateStates`, emits one
- * `OverlayAssertion` per element index in that state's `requiredElements`
+ * `OverlayAssertion` per assertion index in that state's `assertions`
  * array. The executor (out of scope here) dereferences each assertion
  * against the live IR, calls `computeVisibility(target)` on the resolved
  * element, and asserts `visibleRatio >= minRatio`.
@@ -123,7 +123,7 @@ export function visibilityOverlay(
       const stateIds = [...ctx.case.activateStates].sort(byString);
       for (const stateId of stateIds) {
         const state = stateById.get(stateId);
-        const len = state?.requiredElements.length ?? 0;
+        const len = state?.assertions.length ?? 0;
         for (let i = 0; i < len; i++) {
           out.push({
             kind: "overlay",
@@ -150,7 +150,7 @@ export function visibilityOverlay(
  * Build a `token` overlay.
  *
  * For each post-state in `ctx.case.activateStates`, emits one
- * `OverlayAssertion` per element index in that state's `requiredElements`
+ * `OverlayAssertion` per assertion index in that state's `assertions`
  * array. The executor (out of scope here) dereferences each assertion
  * against the live IR, calls `checkDesignTokens(target, registry)` on the
  * resolved element, and fails on any non-empty violation list.
@@ -189,7 +189,7 @@ export function tokenOverlay(
       const stateIds = [...ctx.case.activateStates].sort(byString);
       for (const stateId of stateIds) {
         const state = stateById.get(stateId);
-        const len = state?.requiredElements.length ?? 0;
+        const len = state?.assertions.length ?? 0;
         for (let i = 0; i < len; i++) {
           out.push({
             kind: "overlay",

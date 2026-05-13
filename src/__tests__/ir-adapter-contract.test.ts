@@ -29,6 +29,7 @@ import { MockRegistry } from "../test-utils/mock-registry";
 import { MockActionExecutor } from "../test-utils/mock-executor";
 import { createButton, createHeading, createLink, resetIdCounter } from "../test-utils/mock-elements";
 import type { StateDefinition, TransitionDefinition } from "../state/state-machine";
+import { makeTestAssertion } from "./test-helpers";
 
 // ---------------------------------------------------------------------------
 // Compile-time structural-compatibility witnesses.
@@ -59,7 +60,9 @@ const FIXTURE: IRDocument = {
     {
       id: "login",
       name: "Login",
-      requiredElements: [{ role: "button", text: "Login" }],
+      assertions: [
+        makeTestAssertion("login", 0, { role: "button", text: "Login" }),
+      ],
       excludedElements: [{ role: "heading", text: "Dashboard" }],
       blocking: false,
       group: "auth",
@@ -72,13 +75,17 @@ const FIXTURE: IRDocument = {
     {
       id: "dashboard",
       name: "Dashboard",
-      requiredElements: [{ role: "heading", text: "Dashboard" }],
+      assertions: [
+        makeTestAssertion("dashboard", 0, { role: "heading", text: "Dashboard" }),
+      ],
       isInitial: false,
     },
     {
       id: "settings",
       name: "Settings",
-      requiredElements: [{ role: "link", text: "Settings" }],
+      assertions: [
+        makeTestAssertion("settings", 0, { role: "link", text: "Settings" }),
+      ],
       isTerminal: true,
     },
   ],

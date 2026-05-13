@@ -27,17 +27,18 @@ import {
   coverageDiff,
   type AssertionExecution,
 } from "../../state/coverage-diff";
+import { makeTestAssertion } from "../test-helpers";
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
 function mkState(id: string, requiredCount: number): IRState {
-  const requiredElements = [];
+  const assertions = [];
   for (let i = 0; i < requiredCount; i++) {
-    requiredElements.push({ id: `${id}-el-${i}` });
+    assertions.push(makeTestAssertion(id, i, { id: `${id}-el-${i}` }));
   }
-  return { id, name: id, requiredElements };
+  return { id, name: id, assertions };
 }
 
 function mkAction(

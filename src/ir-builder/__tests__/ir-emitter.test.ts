@@ -112,7 +112,7 @@ describe("buildIRDocument", () => {
       ],
     });
 
-    expect(doc.states[0].requiredElements).toEqual([
+    expect(doc.states[0].assertions.map((a) => a.target.criteria)).toEqual([
       { id: "a" },
       { id: "b" },
     ]);
@@ -137,7 +137,9 @@ describe("buildIRDocument", () => {
       ],
     });
 
-    expect(doc.states[0].requiredElements).toEqual([{ role: "button" }]);
+    expect(doc.states[0].assertions.map((a) => a.target.criteria)).toEqual([
+      { role: "button" },
+    ]);
   });
 
   it("throws on duplicate state ids with both source locations", () => {

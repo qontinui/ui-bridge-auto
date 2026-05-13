@@ -35,6 +35,7 @@ import type {
   RecordedEvent,
   RecordingSession,
 } from "../../recording/session-recorder";
+import { makeTestAssertion } from "../test-helpers";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -52,14 +53,14 @@ function mkState(
   file: string,
   name = id,
 ): IRState {
-  const requiredElements = [];
+  const assertions = [];
   for (let i = 0; i < requiredCount; i++) {
-    requiredElements.push({ id: `${id}-el-${i}` });
+    assertions.push(makeTestAssertion(id, i, { id: `${id}-el-${i}` }));
   }
   return {
     id,
     name,
-    requiredElements,
+    assertions,
     provenance: { source: "build-plugin", file },
   };
 }
