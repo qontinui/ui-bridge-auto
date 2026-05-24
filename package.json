@@ -1,6 +1,6 @@
 {
   "name": "@qontinui/ui-bridge-auto",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "DOM-based model-based automation library for the UI Bridge SDK",
   "repository": {
     "type": "git",
@@ -119,7 +119,7 @@
     "verify-published": "node scripts/verify-published.js"
   },
   "dependencies": {
-    "@qontinui/shared-types": "^0.2.5",
+    "@qontinui/shared-types": "^0.3.0",
     "@qontinui/ui-bridge": "^0.3.2",
     "ts-morph": "^27.0.2"
   },
