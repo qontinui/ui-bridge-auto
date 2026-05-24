@@ -65,7 +65,13 @@ export class TesseractOCRProvider implements IOCRProvider {
 
     this.initPromise = (async () => {
       try {
-        const tesseract = await import("tesseract.js");
+        // Magic comments tell webpack/Vite/Next.js to skip eager resolution of
+        // this optional peer dependency. Without them, bundlers emit a
+        // "Module not found: tesseract.js" warning on every build even though
+        // the import is dynamic and the dep is documented as optional.
+        const tesseract = await import(
+          /* webpackIgnore: true */ /* @vite-ignore */ "tesseract.js"
+        );
         this.worker = await tesseract.createWorker(this.language);
       } catch (e: unknown) {
         this.initPromise = null;
