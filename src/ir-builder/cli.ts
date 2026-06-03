@@ -130,9 +130,15 @@ export function runCli(argv: string[] = process.argv.slice(2)): number {
       projectRoot: args.projectRoot,
       tsconfigPath: args.tsconfigPath,
     });
-    process.stdout.write(
-      `[ui-bridge-ir] wrote ${result.outFile} (${result.scannedFiles.length} files scanned, ${result.warnings.length} warning(s))\n`,
-    );
+    if (result.skipped) {
+      process.stdout.write(
+        `[ui-bridge-ir] skipped emit — IR is empty (${result.scannedFiles.length} files scanned, ${result.warnings.length} warning(s))\n`,
+      );
+    } else {
+      process.stdout.write(
+        `[ui-bridge-ir] wrote ${result.outFile} (${result.scannedFiles.length} files scanned, ${result.warnings.length} warning(s))\n`,
+      );
+    }
     return 0;
   } catch (err) {
     process.stderr.write(

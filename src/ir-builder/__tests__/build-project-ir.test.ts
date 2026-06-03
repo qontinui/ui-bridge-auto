@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildProjectIR, writeProjectIR } from "../build-project-ir";
@@ -92,9 +92,54 @@ describe("buildProjectIR", () => {
       documentName: "Test Doc",
       outFile: "build/ir.json",
     });
+    expect(result.skipped).toBe(false);
     expect(result.outFile.endsWith("build/ir.json")).toBe(true);
     const contents = JSON.parse(readFileSync(result.outFile, "utf8"));
     expect(contents.id).toBe("test-doc");
+  });
+
+  describe("empty-IR skip behavior", () => {
+    beforeEach(() => {
+      // Replace the seeded LoginPage.tsx with one that has NO State /
+      // TransitionTo declarations so extraction yields zero of each.
+      writeFileSync(
+        join(projectRoot, "src", "LoginPage.tsx"),
+        "export function Empty() { return null; }\n",
+        "utf8",
+      );
+    });
+
+    it("skips writing the output file when extraction produces no states + no transitions", () => {
+      const outRel = "specs/pages/empty-doc/state-machine.derived.json";
+      const result = writeProjectIR({
+        projectRoot,
+        documentId: "empty-doc",
+        documentName: "Empty Doc",
+        outFile: outRel,
+      });
+
+      expect(result.skipped).toBe(true);
+      expect(existsSync(join(projectRoot, outRel))).toBe(false);
+    });
+
+    it("does NOT overwrite an existing file with an empty emit", () => {
+      const outRel = "specs/pages/preserve-me/state-machine.derived.json";
+      const existing = '{"sentinel":"keep-me"}';
+      mkdirSync(join(projectRoot, "specs", "pages", "preserve-me"), {
+        recursive: true,
+      });
+      writeFileSync(join(projectRoot, outRel), existing, "utf8");
+
+      const result = writeProjectIR({
+        projectRoot,
+        documentId: "preserve-me",
+        documentName: "Preserve Me",
+        outFile: outRel,
+      });
+
+      expect(result.skipped).toBe(true);
+      expect(readFileSync(join(projectRoot, outRel), "utf8")).toBe(existing);
+    });
   });
 });
 
