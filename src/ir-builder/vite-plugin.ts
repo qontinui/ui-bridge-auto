@@ -15,16 +15,14 @@
  * - Output is deterministic — no timestamps, sorted keys, byte-stable.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
 import type { Project } from "ts-morph";
 
 import {
   buildProjectIR,
   createProject,
+  emitIRToFile,
   resolveAbsolute,
 } from "./build-project-ir";
-import { serializeIRDocument } from "./ir-emitter";
 import type { IRBuildWarning } from "./ir-emitter";
 
 // ---------------------------------------------------------------------------
@@ -134,8 +132,7 @@ export function uiBridgeIRPlugin(opts: IRBuilderPluginOptions): VitePluginLike {
         builderVersion: opts.pluginVersion,
       });
       const outAbsolute = resolveAbsolute(projectRoot, outFile);
-      mkdirSync(dirname(outAbsolute), { recursive: true });
-      writeFileSync(outAbsolute, serializeIRDocument(result.document), "utf8");
+      emitIRToFile(result.document, outAbsolute);
     } catch (err) {
       console.error(
         `[ui-bridge-ir] IR build failed: ${err instanceof Error ? err.message : String(err)}`,

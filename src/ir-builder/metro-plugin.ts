@@ -42,17 +42,17 @@
  * ```
  */
 
-import { mkdirSync, writeFileSync, watch as fsWatch, type FSWatcher, statSync } from "node:fs";
-import { dirname, join, sep } from "node:path";
+import { watch as fsWatch, type FSWatcher, statSync } from "node:fs";
+import { join, sep } from "node:path";
 import type { Project } from "ts-morph";
 
 import {
   buildProjectIR,
   createProject,
+  emitIRToFile,
   resolveAbsolute,
   normalize,
 } from "./build-project-ir";
-import { serializeIRDocument } from "./ir-emitter";
 import type { IRBuildWarning } from "./ir-emitter";
 import type { IRBuilderPluginOptions } from "./vite-plugin";
 
@@ -146,8 +146,7 @@ export function createMetroIRWatcher(
         builderVersion: opts.pluginVersion,
       });
       const outAbsolute = resolveAbsolute(projectRoot, outFile);
-      mkdirSync(dirname(outAbsolute), { recursive: true });
-      writeFileSync(outAbsolute, serializeIRDocument(result.document), "utf8");
+      emitIRToFile(result.document, outAbsolute);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[ui-bridge-ir:metro] IR build failed: ${message}`);

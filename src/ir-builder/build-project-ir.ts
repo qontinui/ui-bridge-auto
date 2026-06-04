@@ -63,6 +63,19 @@ export interface BuildProjectIRResult {
   scannedFiles: string[];
 }
 
+export interface WriteProjectIRResult {
+  /** Absolute path the IR would be written to. */
+  outFile: string;
+  /**
+   * `true` when the IR document had no states and no transitions, in which
+   * case the file is NOT created or overwritten. Callers wanting to surface
+   * the skip in their own logs should branch on this.
+   */
+  skipped: boolean;
+  warnings: IRBuildWarning[];
+  scannedFiles: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Build
 // ---------------------------------------------------------------------------
@@ -134,22 +147,52 @@ export function buildProjectIR(opts: BuildProjectIROptions): BuildProjectIRResul
 
 /**
  * Build the IR for a project and write it to disk. Returns the absolute
- * output path.
+ * output path plus a `skipped` flag (`true` when the IR was empty and the
+ * file was therefore NOT written).
  */
 export function writeProjectIR(
   opts: BuildProjectIROptions & { outFile?: string },
-): { outFile: string; warnings: IRBuildWarning[]; scannedFiles: string[] } {
+): WriteProjectIRResult {
   const projectRoot = opts.projectRoot ?? process.cwd();
   const outFile = opts.outFile ?? "src/state-machine.derived.json";
   const result = buildProjectIR(opts);
   const outAbsolute = resolveAbsolute(projectRoot, outFile);
-  mkdirSync(dirname(outAbsolute), { recursive: true });
-  writeFileSync(outAbsolute, serializeIRDocument(result.document), "utf8");
+  const skipped = !emitIRToFile(result.document, outAbsolute);
   return {
     outFile: outAbsolute,
+    skipped,
     warnings: result.warnings,
     scannedFiles: result.scannedFiles,
   };
+}
+
+/**
+ * Write an IR document to `outAbsolute`, or skip if the document has no
+ * states AND no transitions. Returns `true` when the file was written,
+ * `false` when emission was skipped because the IR was empty.
+ *
+ * Skip is intentional: an empty `state-machine.derived.json` is pure noise
+ * — it appears in `git status`, requires manual cleanup, and conveys no
+ * authoring intent. Letting the previously-existing file remain untouched
+ * (when there is one) is also intentional: never destroy a prior real IR
+ * with an empty emit; the operator should explicitly remove states from
+ * source to get the empty-and-then-deleted path, which would need a
+ * different signal.
+ *
+ * Used by `writeProjectIR` (CLI / Next.js path) and by the Vite + Metro
+ * plugins so all three emission paths share identical skip semantics.
+ */
+export function emitIRToFile(doc: IRDocument, outAbsolute: string): boolean {
+  if (doc.states.length === 0 && doc.transitions.length === 0) {
+    console.warn(
+      `[ui-bridge-ir] skipping emit — IR for "${doc.id}" has no states and no transitions (nothing extracted from sources). ` +
+        `Path: ${outAbsolute}`,
+    );
+    return false;
+  }
+  mkdirSync(dirname(outAbsolute), { recursive: true });
+  writeFileSync(outAbsolute, serializeIRDocument(doc), "utf8");
+  return true;
 }
 
 // ---------------------------------------------------------------------------
