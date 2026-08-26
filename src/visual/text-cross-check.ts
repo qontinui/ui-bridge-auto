@@ -34,6 +34,7 @@ import type { QueryableElement } from "../core/element-query";
 import { similarity } from "../core/fuzzy-match";
 import type { IOCRProvider, TextRegion } from "./types";
 import { MEDIA_ELEMENT_TAGS } from "./types";
+import { computeVisibility } from "./visibility";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,7 +45,20 @@ export type TextCrossCheckCause =
   | "css-clip"
   | "transform-hidden"
   | "low-contrast"
+  | "occluded"
   | "unknown";
+
+/**
+ * Extra detail attached to an `occluded` verdict: WHICH element is on top.
+ * The cause alone says the text is hidden; only the occluder's id says what
+ * to move.
+ */
+export interface CrossCheckOcclusionDetail {
+  /** Registry id (or DOM descriptor) of the element painting above the target. */
+  occludedBy: string;
+  /** Fraction of the target's area that element covers, 0..1. */
+  ratio: number;
+}
 
 export interface CrossCheckTextOptions {
   /**
@@ -84,7 +98,25 @@ export interface CrossCheckTextOptions {
   maxSize?: number;
   /** Element id used for snapshot capture. Defaults to `target.id`. */
   elementId?: string;
+  /**
+   * The other registered elements on the page, used to decide whether
+   * something is painting ABOVE the target.
+   *
+   * Optional, and its absence is handled honestly rather than silently:
+   * with no registry there is nothing to compare stacking against, so the
+   * `occluded` rule cannot run and the classifier falls through to the
+   * rules that can. Supply it whenever the caller has a registry — the
+   * runner's regression executor does.
+   */
+  registry?: QueryableElement[];
+  /**
+   * Treat occlusion by a tracked modal/dropdown as expected (default
+   * `false` — a dialog covering the page is the dialog working, not a
+   * defect). Passed through to `computeVisibility`'s overlay predicate.
+   */
+  isKnownOverlay?: (el: HTMLElement) => boolean;
 }
+
 
 export interface TextCrossCheckOk {
   skipped: false;
@@ -95,6 +127,13 @@ export interface TextCrossCheckOk {
   similarity: number;
   /** Suspected cause when `pass === false`. */
   cause?: TextCrossCheckCause;
+  /**
+   * Present only when `cause === "occluded"` — the element on top and how
+   * much of the target it covers. Without this a caller knows the text is
+   * hidden but not by what, which is the difference between a report and a
+   * fix.
+   */
+  occlusion?: CrossCheckOcclusionDetail;
 }
 
 export interface TextCrossCheckSkipped {
@@ -181,10 +220,19 @@ export async function crossCheckText(
   }
 
   // Mismatch — classify.
-  const cause = classifyMismatch(target.element, regions, {
+  const { cause, occlusion } = classifyMismatch(target.element, regions, {
     domText,
     ocrText,
     lowContrastThreshold: opts.lowContrastThreshold ?? 0.5,
+    target,
+    registry: opts.registry,
+    viewport: {
+      x: 0,
+      y: 0,
+      width: typeof window !== "undefined" ? window.innerWidth : 0,
+      height: typeof window !== "undefined" ? window.innerHeight : 0,
+    },
+    isKnownOverlay: opts.isKnownOverlay,
   });
 
   return {
@@ -194,6 +242,7 @@ export async function crossCheckText(
     ocrText,
     similarity: sim,
     cause,
+    ...(occlusion ? { occlusion } : {}),
   };
 }
 
@@ -221,7 +270,21 @@ interface ClassifierContext {
   domText: string;
   ocrText: string;
   lowContrastThreshold: number;
+  /** The registry entry for the element under test, for the occlusion rule. */
+  target?: QueryableElement;
+  /** Everything else on the page, for the occlusion rule. */
+  registry?: QueryableElement[];
+  viewport: { x: number; y: number; width: number; height: number };
+  isKnownOverlay?: (el: HTMLElement) => boolean;
 }
+
+/**
+ * How much of the target another element must cover before occlusion is
+ * blamed for an OCR mismatch. Above a hairline, well below "most of it":
+ * clipping the tail of a name is enough to make the text unreadable, which
+ * is precisely the reported failure.
+ */
+const OCCLUSION_CAUSE_MIN_RATIO = 0.1;
 
 /**
  * Rule-based mismatch classifier (Open decision #5 — chose rule-based v1).
@@ -233,20 +296,27 @@ interface ClassifierContext {
  *   2. `transform-hidden` — element's own or any ancestor's `transform`
  *      property is non-`none`, AND the element's bounding rect's center
  *      lies outside the document.
- *   3. `low-contrast` — OCR confidence available and below threshold; OR
+ *   3. `occluded` — another element paints above this one and covers it.
+ *      Checked BEFORE `low-contrast` and `font-not-loaded` because a covered
+ *      element produces exactly their signature (DOM text present, OCR
+ *      empty) while having nothing to do with fonts or colour. Without this
+ *      rule the classifier reported a widget sitting on top of a label as
+ *      `font-not-loaded` — a confident misdiagnosis that sent readers after
+ *      a webfont bug that did not exist.
+ *   4. `low-contrast` — OCR confidence available and below threshold; OR
  *      computed `color` is sufficiently close to `background-color`
  *      (luminance delta < 1.5; skipped when bg is fully transparent).
- *   4. `font-not-loaded` — DOM text is non-empty AND OCR text is empty (or
+ *   5. `font-not-loaded` — DOM text is non-empty AND OCR text is empty (or
  *      contains only ".notdef"/"�" replacement chars). The strongest
  *      "pixels don't show what the DOM says" signal that isn't a layout
  *      problem. Optionally reinforced by `font-display: swap | block |
  *      optional` on the element/ancestor when the property is exposed.
- *   5. otherwise `unknown`.
+ *   6. otherwise `unknown`.
  *
- * Order is important: css-clip and transform-hidden can themselves cause
- * empty OCR output (no pixels = no glyphs to read), so they are checked
- * first. Without that ordering, a clipped element would mis-classify as
- * font-not-loaded.
+ * Order is important: css-clip, transform-hidden and occlusion can each
+ * themselves cause empty OCR output (no pixels = no glyphs to read), so they
+ * are checked first. Without that ordering, a clipped OR covered element
+ * would mis-classify as font-not-loaded.
  *
  * Determinism: every input is read from `window.getComputedStyle` (sync,
  * deterministic). The classifier never throws — bad input falls through to
@@ -256,42 +326,76 @@ function classifyMismatch(
   element: HTMLElement,
   regions: { confidence: number }[] | undefined,
   ctx: ClassifierContext,
-): TextCrossCheckCause {
+): { cause: TextCrossCheckCause; occlusion?: CrossCheckOcclusionDetail } {
   const ocrEmpty = ctx.ocrText.length === 0 || isReplacementOnly(ctx.ocrText);
 
   // 1. css-clip
   if (hasClipPathAncestor(element)) {
-    return "css-clip";
+    return { cause: "css-clip" };
   }
   if (isClippedByOverflow(element)) {
-    return "css-clip";
+    return { cause: "css-clip" };
   }
 
   // 2. transform-hidden
   if (hasNonIdentityTransform(element) && isCenterOffDocument(element)) {
-    return "transform-hidden";
+    return { cause: "transform-hidden" };
   }
 
-  // 3. low-contrast
+  // 3. occluded — something is painting on top of this element.
+  //
+  // Must precede low-contrast and font-not-loaded: a covered element shows
+  // the DOM text present / OCR empty signature those rules match on, while
+  // having nothing to do with fonts or colour. Reported with the occluder's
+  // identity, because "hidden" without "by what" is not actionable.
+  //
+  // Needs a registry to compare stacking against. Without one the rule is
+  // simply not evaluated — it never guesses, and it never suppresses the
+  // later rules.
+  if (ctx.registry && ctx.registry.length > 0 && ctx.target) {
+    try {
+      const report = computeVisibility(ctx.target, ctx.registry, ctx.viewport, {
+        isKnownOverlay: ctx.isKnownOverlay,
+      });
+      // Biggest occluder wins the blame; expected overlays (a tracked
+      // modal) are not a defect and are left to fall through.
+      let worst: { id: string; ratio: number } | null = null;
+      for (const occ of report.occludedBy) {
+        if (occ.isExpectedOverlay) continue;
+        if (!worst || occ.ratio > worst.ratio) worst = { id: occ.id, ratio: occ.ratio };
+      }
+      if (worst && worst.ratio >= OCCLUSION_CAUSE_MIN_RATIO) {
+        return {
+          cause: "occluded",
+          occlusion: { occludedBy: worst.id, ratio: worst.ratio },
+        };
+      }
+    } catch {
+      // A visibility probe that throws must not swallow the mismatch —
+      // fall through to the remaining rules rather than returning unknown.
+    }
+  }
+
+  // 4. low-contrast
   if (regions && regions.length > 0) {
     const minConf = regions.reduce(
       (acc, r) => (r.confidence < acc ? r.confidence : acc),
       Infinity,
     );
-    if (minConf < ctx.lowContrastThreshold) return "low-contrast";
+    if (minConf < ctx.lowContrastThreshold) return { cause: "low-contrast" };
   }
-  if (isLowContrast(element)) return "low-contrast";
+  if (isLowContrast(element)) return { cause: "low-contrast" };
 
-  // 4. font-not-loaded — DOM has text but OCR yields nothing.
+  // 5. font-not-loaded — DOM has text but OCR yields nothing.
   // `hasFontDisplaySwap` is a *bonus* signal but not required; the empty-
   // OCR-with-non-empty-DOM pattern is itself diagnostic in production.
   // Browsers expose font-display only on the @font-face rule, so reading
   // it from the element's computed style works only in some engines.
   if (ctx.domText.length > 0 && ocrEmpty) {
-    return "font-not-loaded";
+    return { cause: "font-not-loaded" };
   }
 
-  return "unknown";
+  return { cause: "unknown" };
 }
 
 // ---------------------------------------------------------------------------
