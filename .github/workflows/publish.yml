@@ -44,7 +44,22 @@ jobs:
         # Trusted Publishers requires 11.5.1+. Without this, the publish
         # step sends an empty auth header and gets 404 even when the
         # OIDC + provenance flow succeeds.
-        run: npm install --global npm@latest
+        #
+        # Pin to the 11.x line rather than `@latest`. `@latest` is a moving
+        # target and it silently broke this workflow: npm 12 shipped with
+        # `engines.node = ^22.22.2 || ^24.15.0 || >=26.0.0`, so on the node@20
+        # pinned above it aborts with EBADENGINE and the release never
+        # publishes. The v0.1.8 tag failed exactly here on 2026-08-30
+        # (run 33299834877), while the identical v0.1.7 release had passed in
+        # May -- the only thing that changed was what `@latest` resolved to.
+        # qontinui/ui-bridge hit the same wall on its 0.21.0 / 0.3.0 / 0.6.0
+        # tags and pinned; this repo mirrors that publish.yml and simply never
+        # received the fix.
+        #
+        # `npm@^11` supports node ^20.17.0 and is comfortably above the
+        # 11.5.1 trusted-publishing floor, so it satisfies both constraints
+        # and cannot drift out from under us again.
+        run: npm install --global npm@^11
 
       - name: Install dependencies
         run: npm ci
