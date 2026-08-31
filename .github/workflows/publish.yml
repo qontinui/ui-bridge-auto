@@ -64,8 +64,41 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # THE RELEASE PATH GATES ITSELF - it is the only thing that can.
+      #
+      # Until 2026-08-31 a `v*` tag push also fired `qontinui CI`, because that
+      # workflow was armed with the unfiltered `on: [push, pull_request]` (v0.1.8's
+      # tag produced run 33299834859 that way). It never *gated* this job - the two
+      # runs raced - but it did record a typecheck/lint/test verdict at the released
+      # SHA. Scoping that trigger to `master` + the `merge-candidate*` globs (#25,
+      # plan 2026-08-31-devops-unfiltered-push-trigger-duplicates-every-pr-ci-run)
+      # was correct and is not being undone here: restoring `tags:` there would
+      # recreate exactly the same-SHA duplicate that #25 removed, since the release
+      # commit is already on `master` and has already run.
+      #
+      # But it leaves a tag push firing NOTHING except this workflow, whose only
+      # step that can fail is `npm run build`. So the checks move HERE, where they
+      # are strictly stronger than what was lost: they run BEFORE `npm publish`, so
+      # a red typecheck or a failing test aborts the release rather than racing it.
+      # An npm publish is not retractable, and `scripts/verify-published.js` only
+      # reports after the tarball is already on the registry.
+      #
+      # Same checks in the same order as `qontinui-ci.yml`'s `build` job, so a
+      # release is gated on what a PR is gated on. Spelled as the package.json
+      # scripts rather than that job's `--if-present` / `npx` scaffolding: here the
+      # scripts are known to exist, and a silently skipped gate on the release path
+      # is the failure this step is meant to remove.
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
       - name: Build
         run: npm run build
+
+      - name: Test
+        run: npm test
 
       - name: Publish
         # --provenance generates an attestation linking the npm tarball

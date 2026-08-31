@@ -44,7 +44,21 @@ jobs:
         with:
           node-version: 20
       - name: Install dependencies
-        run: npm ci || npm install
+        # `npm ci` with NO `|| npm install` fallback. The fallback silently
+        # repaired a `package-lock.json` that no longer satisfied `package.json`
+        # and then reported green, so lockfile drift could never fail a build.
+        #
+        # That is load-bearing for the merge train: since the `push:` trigger above
+        # was scoped, this is the ONLY workflow in the repo that can fire on a
+        # `merge-candidate/**` ref (`publish.yml`'s `push:` is tag-filtered), and
+        # coord lands PRs on the check-runs it produces there. A verdict derived
+        # from a silently re-resolved dependency tree is not the verdict coord
+        # believes it is reading.
+        #
+        # Verified safe at the time of the change: `npm ci` against this lockfile
+        # exits 0 both locally (232 packages) and on the hosted runner (234 - the
+        # difference is platform-optional native deps, not lockfile drift).
+        run: npm ci
       - name: Type check
         run: if [ -f tsconfig.json ]; then npx --yes tsc --noEmit; fi
       - name: Lint
