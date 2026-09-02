@@ -59,11 +59,33 @@ jobs:
         # exits 0 both locally (232 packages) and on the hosted runner (234 - the
         # difference is platform-optional native deps, not lockfile drift).
         run: npm ci
+      # No `--if-present`, and no `[ -f tsconfig.json ]` guard. Those are
+      # bootstrap-template scaffolding for a repo whose scripts are unknown. Here
+      # every one is known to exist (package.json declares typecheck, lint, build
+      # and test), so the guards can no longer protect anything - they can only
+      # ever SKIP a gate, silently, and report the skip as a pass.
+      #
+      # That is the same failure the install step above was just hardened against,
+      # on the same load-bearing path and for the same reason: this is the ONLY
+      # workflow that fires on a `merge-candidate/**` ref, so its check-runs ARE
+      # the verdict coord's merge train lands PRs on, and coord cannot tell a
+      # check that passed from one that never ran. A renamed or deleted script
+      # would turn a gate into a no-op and keep landing PRs green.
+      #
+      # `npm run typecheck` also replaces `npx --yes tsc`. That resolves the local
+      # binary while one is installed, but `--yes` authorizes it to FETCH a
+      # floating TypeScript from the registry when one is not - reintroducing, one
+      # step later, exactly the unlocked dependency tree the strict `npm ci` above
+      # exists to prevent.
+      #
+      # These four commands are now identical to `publish.yml`'s gate steps, which
+      # is what that workflow's comment already claims of them: a release is gated
+      # on what a PR is gated on.
       - name: Type check
-        run: if [ -f tsconfig.json ]; then npx --yes tsc --noEmit; fi
+        run: npm run typecheck
       - name: Lint
-        run: npm run lint --if-present
+        run: npm run lint
       - name: Build
-        run: npm run build --if-present
+        run: npm run build
       - name: Test
-        run: npm test --if-present
+        run: npm test

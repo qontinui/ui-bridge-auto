@@ -104,8 +104,12 @@ npm run verify-published  # Spot-check the registry artifact (see Publishing)
 
 ## Publishing
 
-`v*` tag push fires `.github/workflows/publish.yml`, which runs
-`npm ci → npm run build → npm publish` on `ubuntu-latest`. To release:
+`v*` tag push fires `.github/workflows/publish.yml`. It first asserts the two
+release invariants — the tag names the version in `package.json`, and the
+tagged commit is an ancestor of `master` — then runs
+`npm ci → typecheck → lint → build → test → npm publish` on `ubuntu-latest`.
+Any red check aborts the release, so nothing reaches the registry unverified.
+To release:
 
 1. Bump `version` in `package.json` and commit on `master`.
 2. `git push origin master` so the release commit is on the remote
