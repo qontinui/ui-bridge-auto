@@ -1,6 +1,6 @@
 {
   "name": "@qontinui/ui-bridge-auto",
-  "version": "0.1.8",
+  "version": "0.2.0",
   "description": "DOM-based model-based automation library for the UI Bridge SDK",
   "repository": {
     "type": "git",
@@ -120,11 +120,11 @@
   },
   "dependencies": {
     "@qontinui/shared-types": "^0.3.0",
-    "@qontinui/ui-bridge": "^0.3.2",
     "ts-morph": "^27.0.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@qontinui/ui-bridge": "^0.30.0",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.1.2",
     "eslint": "^10.1.0",
@@ -138,6 +138,7 @@
     "ws": "^8.20.0"
   },
   "peerDependencies": {
+    "@qontinui/ui-bridge": ">=0.30.0 <1",
     "tesseract.js": ">=5.0.0"
   },
   "peerDependenciesMeta": {

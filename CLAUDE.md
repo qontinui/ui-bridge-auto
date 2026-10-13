@@ -160,7 +160,14 @@ old "step 6: pnpm install + typecheck in qontinui-runner" instruction.
 
 ## Dependencies
 
-- `@qontinui/ui-bridge` — UI Bridge SDK (element registry, types, actions)
+- `@qontinui/ui-bridge` — UI Bridge SDK (element registry, types, actions).
+  A **peer** dependency (`>=0.30.0 <1`), plus a `^0.30.0` devDependency for
+  building and testing here. Never move it back into `dependencies`: every
+  consumer (qontinui-web frontend, qontinui-runner) depends on the SDK itself,
+  so a regular dependency on a different range nests a second copy under this
+  package — two registries and singletons, double bundle weight, and SDK types
+  that no longer unify across the boundary. It is also `external` in
+  `tsup.config.ts`, so the dist imports the consumer's copy.
 - `vitest` + `jsdom` — testing (dev only)
 - `tsup` — bundling (dev only)
 
