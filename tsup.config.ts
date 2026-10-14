@@ -53,6 +53,7 @@ export default defineConfig([
     sourcemap: true,
     external: [
       "@qontinui/ui-bridge",
+      "@qontinui/shared-types",
       "ts-morph",
       "@ts-morph/common",
       "@anthropic-ai/sdk",
@@ -74,6 +75,7 @@ export default defineConfig([
     // the shebang and break Node parsing.
     external: [
       "@qontinui/ui-bridge",
+      "@qontinui/shared-types",
       "ts-morph",
       "@ts-morph/common",
       "@anthropic-ai/sdk",
@@ -88,6 +90,7 @@ export default defineConfig([
     sourcemap: true,
     external: [
       "@qontinui/ui-bridge",
+      "@qontinui/shared-types",
       "ts-morph",
       "@ts-morph/common",
       "@anthropic-ai/sdk",
@@ -106,6 +109,7 @@ export default defineConfig([
     sourcemap: true,
     external: [
       "@qontinui/ui-bridge",
+      "@qontinui/shared-types",
       "ts-morph",
       "@ts-morph/common",
       "@anthropic-ai/sdk",

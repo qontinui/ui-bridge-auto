@@ -168,6 +168,21 @@ old "step 6: pnpm install + typecheck in qontinui-runner" instruction.
   package — two registries and singletons, double bundle weight, and SDK types
   that no longer unify across the boundary. It is also `external` in
   `tsup.config.ts`, so the dist imports the consumer's copy.
+- `@qontinui/shared-types` — the `ui-bridge-ir` IR types. A **peer**
+  dependency (`>=0.3.0 <3`) plus a `^2.3.1` devDependency, for the same
+  reason as the SDK: both consumers depend on it directly, and the regular
+  `^0.3.0` dependency nested a 0.3.0 copy under this package in qontinui-web
+  next to its own 2.x. Every import from it in shipped (non-test) `src/` is
+  `import type`, so no dist JS references it — only the emitted `.d.ts` files
+  do, which is why the peer is required rather than optional. (The
+  devDependency is also needed at runtime by `ir-adapter-contract.test.ts`,
+  which imports its adapters.) Widen the upper bound only after checking that
+  `dist/ui-bridge-ir.d.ts` of the new major stays compatible with the types
+  `src/` imports (0.3.0 → 2.3.1 only added fields). CI builds only against
+  the devDependency, so nothing checks the floor: when `src/` starts using a
+  type added after 0.3.0 (e.g. `IRApiCheck`), raise the floor to the version
+  that introduced it. It is also listed in every `external` array in
+  `tsup.config.ts`, so `dts: { resolve: true }` never inlines the IR types.
 - `vitest` + `jsdom` — testing (dev only)
 - `tsup` — bundling (dev only)
 
