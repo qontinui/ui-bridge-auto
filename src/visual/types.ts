@@ -12,7 +12,6 @@ export type { ViewportRegion } from "../types/region";
 // Re-export media-snapshot types from UI Bridge SDK
 export type {
   MediaSnapshotData,
-  MediaComparisonResult,
   ElementCaptureOptions,
   VisualRegressionOptions,
   VisualRegressionResult,

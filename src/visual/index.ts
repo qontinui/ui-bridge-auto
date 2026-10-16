@@ -111,7 +111,6 @@ export type {
 export type {
   ViewportRegion,
   MediaSnapshotData,
-  MediaComparisonResult,
   ElementCaptureOptions,
   VisualRegressionOptions,
   VisualRegressionResult,
